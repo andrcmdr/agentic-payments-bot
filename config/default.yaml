@@ -1,0 +1,137 @@
+# OpenClaw Agentic Payment Skill Configuration
+skill:
+  name: agentic-payment
+  version: 1.0.0
+
+# SQLite Configuration
+database:
+  path: "./data/payments.db"
+  wal_mode: true
+  busy_timeout_ms: 5000
+
+# Protocol Configuration
+protocols:
+  x402:
+    enabled: true
+    facilitator_url: "https://x402.org/facilitator"
+    default_network: "base"
+    default_asset: "USDC"
+    timeout_ms: 30000
+  ap2:
+    enabled: true
+    mandate_issuer: "https://your-ap2-issuer.example.com"
+    credential_provider_url: "https://credentials.example.com"
+    timeout_ms: 30000
+
+# Web3 Configuration
+web3:
+  ethereum:
+    enabled: true
+    rpc_url: "https://mainnet.infura.io/v3/YOUR_PROJECT_ID"
+    chain_id: 1
+  base:
+    enabled: true
+    rpc_url: "https://mainnet.base.org"
+    chain_id: 8453
+  polygon:
+    enabled: true
+    rpc_url: "https://polygon-rpc.com"
+    chain_id: 137
+
+# Web2 Payment Gateways
+web2:
+  stripe:
+    enabled: true
+    api_version: "2025-01-27.acacia"
+  paypal:
+    enabled: true
+    environment: "sandbox"   # or "live"
+    base_url: "https://api-m.sandbox.paypal.com"
+  visa:
+    enabled: true
+    base_url: "https://sandbox.api.visa.com"
+  mastercard:
+    enabled: true
+    base_url: "https://sandbox.api.mastercard.com"
+
+# AWS KMS Configuration (access tokens via env vars only)
+kms:
+  enabled: true
+  region: "us-east-1"
+  key_id_env: "AWS_KMS_KEY_ID"
+  # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from environment
+
+# Policy Engine
+policy:
+  enabled: true
+  rules:
+    # Per-transaction limits
+    single_transaction:
+      max_amount_usd: 1000.00
+
+    # Time-based aggregate limits
+    daily:
+      max_total_usd: 5000.00
+      max_transaction_count: 50
+    weekly:
+      max_total_usd: 25000.00
+      max_transaction_count: 200
+    monthly:
+      max_total_usd: 80000.00
+      max_transaction_count: 500
+
+    # Time-of-day restrictions (UTC)
+    time_restrictions:
+      enabled: false
+      allowed_hours:
+        start: 8    # 08:00 UTC
+        end: 22     # 22:00 UTC
+      allowed_days: [1, 2, 3, 4, 5]  # Mon-Fri
+
+    # Address lists
+    whitelist:
+      enabled: false
+      addresses: []
+      # - "0xABCDEF..."
+
+    blacklist:
+      enabled: true
+      addresses:
+        - "0x0000000000000000000000000000000000000000"
+
+    # Currency restrictions
+    allowed_currencies:
+      - "USDC"
+      - "ETH"
+      - "USD"
+      - "EUR"
+
+  # Human confirmation is always required when policy is violated
+  require_human_confirmation_on_violation: true
+
+# Logging & Audit
+logging:
+  level: "info"             # debug | info | warn | error
+  stdout: true
+  stderr_errors: true
+  file:
+    enabled: true
+    path: "./logs/payment-skill.log"
+    max_size_mb: 50
+    max_files: 10
+  audit:
+    sqlite: true            # Write audit records to SQLite
+    verbose: true           # Include request/response payloads
+
+# Web API Configuration
+web_api:
+  enabled: true
+  host: "0.0.0.0"
+  port: 3402
+  cors_origins:
+    - "http://localhost:*"
+
+# CLI Configuration
+cli:
+  interactive_confirmation: true
+  colored_output: true
