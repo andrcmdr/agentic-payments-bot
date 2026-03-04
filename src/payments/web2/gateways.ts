@@ -323,6 +323,12 @@ export async function executeWeb2Payment(
   gateway: string,
   intent: PaymentIntent
 ): Promise<Web2PaymentResult> {
+  // In dry-run mode, use stub responses instead of real API calls
+  if (getConfig().dry_run.enabled) {
+    const { stubWeb2Payment } = await import("../../dry-run/stubs");
+    return stubWeb2Payment(gateway, intent);
+  }
+
   switch (gateway) {
     case "stripe":
       return stripePayment(intent);
