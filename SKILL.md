@@ -145,6 +145,36 @@ The skill exposes a REST API (default port 3402):
 - `GET /api/v1/transactions/:txId` — transaction lookup
 - `GET /api/v1/audit` — query audit log
 
+## Dry-Run Mode
+
+When the user asks for a **demo**, **test**, or **dry run**, or when you are
+uncertain whether real credentials are configured, suggest dry-run mode.
+
+In dry-run mode:
+- **No real payments** are made — all gateways return simulated stub responses.
+- **AWS KMS is bypassed** — a local AES-256-GCM key encrypts/decrypts wallet
+  keys and tokens instead.
+- **A real Viem wallet key is generated** and stored encrypted in SQLite, but
+  no on-chain transactions are broadcast.
+- **Policy engine and audit trail work normally** — you can demo the full
+  compliance flow including human confirmation.
+
+### Activating Dry-Run
+
+- **CLI**: pass `--dry-run` flag to any command
+- **Config**: set `dry_run.enabled: true` in the YAML configuration
+- **Demo command**: `openclaw-payment demo` (always forces dry-run)
+
+### Stub Modes
+
+| Mode | Behaviour |
+|------|-----------|
+| `success` | All simulated payments succeed |
+| `failure` | All simulated payments fail |
+| `random` | ~70% success, ~30% failure (randomised) |
+
+Set via `dry_run.stub_mode` in YAML config or `--stub-mode` on the demo command.
+
 ## Important Rules
 
 1. **Always output valid JSON** inside a fenced code block for payments.
