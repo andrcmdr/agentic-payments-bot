@@ -316,6 +316,203 @@ export async function mastercardPayment(
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// GOOGLE PAY (Google Pay API — Server-Side Token Processing)
+// ═══════════════════════════════════════════════════════════════════════════
+
+export async function googlepayPayment(
+  intent: PaymentIntent
+): Promise<Web2PaymentResult> {
+  const logger = getLogger();
+  const config = getConfig();
+
+  logger.info("web2/googlepay: Processing Google Pay payment token", {
+    amount: intent.amount,
+    currency: intent.currency,
+  });
+
+  const merchantId = await retrieveAndDecrypt("googlepay_merchant_id");
+  const merchantKey = await retrieveAndDecrypt("googlepay_merchant_key");
+
+  // The payment token is expected in intent.metadata.paymentToken,
+  // provided by the client-side Google Pay JS API.
+  const paymentToken = intent.metadata?.paymentToken as string | undefined;
+  if (!paymentToken) {
+    throw new Error(
+      "Google Pay requires a 'paymentToken' in metadata (from the client-side Google Pay JS API)"
+    );
+  }
+
+  const response = await fetch(
+    `${config.web2.googlepay.base_url}/v1/payments:process`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${merchantKey}`,
+      },
+      body: JSON.stringify({
+        merchantId,
+        paymentMethodToken: paymentToken,
+        transactionInfo: {
+          currencyCode: intent.currency.toUpperCase(),
+          totalPrice: intent.amount,
+          totalPriceStatus: "FINAL",
+          countryCode: (intent.metadata?.countryCode as string) ?? "US",
+        },
+        description: intent.description ?? "Agentic payment via OpenClaw",
+        metadata: {
+          protocol: intent.protocol,
+          recipient: intent.recipient,
+          ...(intent.metadata as Record<string, string>),
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Google Pay payment failed: ${response.status} ${errBody}`);
+  }
+
+  const result = (await response.json()) as {
+    paymentId: string;
+    state: string;
+    receipt?: { url: string };
+  };
+
+  auditLog("info", "payment", "googlepay_payment_processed", {
+    paymentId: result.paymentId,
+    state: result.state,
+    amount: intent.amount,
+    currency: intent.currency,
+  });
+
+  return {
+    gateway: "googlepay",
+    transaction_id: result.paymentId,
+    status: result.state === "COMPLETED" ? "success" : result.state === "PENDING" ? "pending" : "failed",
+    amount: intent.amount,
+    currency: intent.currency,
+    receipt_url: result.receipt?.url,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// APPLE PAY (Apple Pay API — Server-Side Merchant Validation & Token Processing)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Validates the Apple Pay merchant session with Apple's servers.
+ * This is the server-to-server call required before processing any Apple Pay token.
+ */
+async function validateApplePayMerchantSession(
+  validationUrl: string
+): Promise<Record<string, unknown>> {
+  const config = getConfig();
+  const merchantId = await retrieveAndDecrypt("applepay_merchant_id");
+  const merchantCert = await retrieveAndDecrypt("applepay_merchant_cert");
+  const merchantKey = await retrieveAndDecrypt("applepay_merchant_key");
+
+  const response = await fetch(validationUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      merchantIdentifier: merchantId,
+      displayName: config.web2.applepay.display_name,
+      initiative: "web",
+      initiativeContext: config.web2.applepay.domain,
+    }),
+  });
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Apple Pay merchant validation failed: ${response.status} ${errBody}`);
+  }
+
+  return (await response.json()) as Record<string, unknown>;
+}
+
+export async function applepayPayment(
+  intent: PaymentIntent
+): Promise<Web2PaymentResult> {
+  const logger = getLogger();
+  const config = getConfig();
+
+  logger.info("web2/applepay: Processing Apple Pay payment token", {
+    amount: intent.amount,
+    currency: intent.currency,
+  });
+
+  // The encrypted payment token from the client-side Apple Pay JS API
+  const paymentToken = intent.metadata?.paymentToken as string | undefined;
+  if (!paymentToken) {
+    throw new Error(
+      "Apple Pay requires a 'paymentToken' in metadata (from the client-side Apple Pay JS API)"
+    );
+  }
+
+  // Optional: Merchant validation (required if the client sends a validationURL)
+  const validationUrl = intent.metadata?.validationURL as string | undefined;
+  if (validationUrl) {
+    logger.info("web2/applepay: Performing merchant session validation");
+    await validateApplePayMerchantSession(validationUrl);
+  }
+
+  const processorKey = await retrieveAndDecrypt("applepay_processor_key");
+
+  const response = await fetch(
+    `${config.web2.applepay.base_url}/v1/payments`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${processorKey}`,
+      },
+      body: JSON.stringify({
+        paymentToken,
+        amount: intent.amount,
+        currencyCode: intent.currency.toUpperCase(),
+        merchantReference: `OC-${Date.now()}`,
+        description: intent.description ?? "Agentic payment via OpenClaw",
+        metadata: {
+          protocol: intent.protocol,
+          recipient: intent.recipient,
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const errBody = await response.text();
+    throw new Error(`Apple Pay payment failed: ${response.status} ${errBody}`);
+  }
+
+  const result = (await response.json()) as {
+    transactionId: string;
+    status: string;
+    receiptUrl?: string;
+  };
+
+  auditLog("info", "payment", "applepay_payment_processed", {
+    transactionId: result.transactionId,
+    status: result.status,
+    amount: intent.amount,
+    currency: intent.currency,
+  });
+
+  return {
+    gateway: "applepay",
+    transaction_id: result.transactionId,
+    status: result.status === "SUCCESS" ? "success" : result.status === "PENDING" ? "pending" : "failed",
+    amount: intent.amount,
+    currency: intent.currency,
+    receipt_url: result.receiptUrl,
+  };
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // GATEWAY DISPATCHER
 // ═══════════════════════════════════════════════════════════════════════════
 
@@ -338,6 +535,10 @@ export async function executeWeb2Payment(
       return visaPayment(intent);
     case "mastercard":
       return mastercardPayment(intent);
+    case "googlepay":
+      return googlepayPayment(intent);
+    case "applepay":
+      return applepayPayment(intent);
     default:
       throw new Error(`Unsupported web2 gateway: ${gateway}`);
   }
