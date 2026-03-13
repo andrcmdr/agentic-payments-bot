@@ -146,6 +146,34 @@ export async function stubMastercardPayment(intent: PaymentIntent): Promise<Web2
   return { gateway: "mastercard", transaction_id: txId, status: "success", amount: intent.amount, currency: intent.currency };
 }
 
+export async function stubGooglepayPayment(intent: PaymentIntent): Promise<Web2PaymentResult> {
+  await simulateLatency();
+  const success = shouldSucceed();
+  const txId = `GPAY-DRYRUN-${uuidv4().slice(0, 12).toUpperCase()}`;
+
+  getLogger().info("[DRY-RUN] Simulated Google Pay payment", { txId, success, amount: intent.amount });
+  auditLog("info", "payment", "dryrun_googlepay", { txId, success, amount: intent.amount });
+
+  if (!success) {
+    return { gateway: "googlepay", transaction_id: txId, status: "failed", amount: intent.amount, currency: intent.currency, error: "[DRY-RUN] Google Pay token processing declined" };
+  }
+  return { gateway: "googlepay", transaction_id: txId, status: "success", amount: intent.amount, currency: intent.currency };
+}
+
+export async function stubApplepayPayment(intent: PaymentIntent): Promise<Web2PaymentResult> {
+  await simulateLatency();
+  const success = shouldSucceed();
+  const txId = `APAY-DRYRUN-${uuidv4().slice(0, 12).toUpperCase()}`;
+
+  getLogger().info("[DRY-RUN] Simulated Apple Pay payment", { txId, success, amount: intent.amount });
+  auditLog("info", "payment", "dryrun_applepay", { txId, success, amount: intent.amount });
+
+  if (!success) {
+    return { gateway: "applepay", transaction_id: txId, status: "failed", amount: intent.amount, currency: intent.currency, error: "[DRY-RUN] Apple Pay token processing failed" };
+  }
+  return { gateway: "applepay", transaction_id: txId, status: "success", amount: intent.amount, currency: intent.currency, receipt_url: "https://sandbox.apple.com/dryrun/receipt" };
+}
+
 /** Dispatch to the correct web2 stub */
 export async function stubWeb2Payment(gateway: string, intent: PaymentIntent): Promise<Web2PaymentResult> {
   switch (gateway) {
@@ -153,6 +181,8 @@ export async function stubWeb2Payment(gateway: string, intent: PaymentIntent): P
     case "paypal":     return stubPaypalPayment(intent);
     case "visa":       return stubVisaPayment(intent);
     case "mastercard": return stubMastercardPayment(intent);
+    case "googlepay":  return stubGooglepayPayment(intent);
+    case "applepay":   return stubApplepayPayment(intent);
     default:
       throw new Error(`[DRY-RUN] Unsupported web2 gateway stub: ${gateway}`);
   }
