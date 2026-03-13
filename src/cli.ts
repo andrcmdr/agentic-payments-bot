@@ -17,7 +17,7 @@ const program = new Command();
 program
   .name("openclaw-payment")
   .description("OpenClaw Agentic Payment Skill — CLI Interface")
-  .version("0.3.0")
+  .version("0.4.0")
   .option("-c, --config <path>", "Path to YAML config file", "config/default.yaml")
   .option("--dry-run", "Enable dry-run mode (no real payments, no AWS KMS)");
 
@@ -38,7 +38,7 @@ program
   .requiredOption("--currency <currency>", "Currency code (USDC, ETH, USD, EUR)")
   .requiredOption("--to <recipient>", "Recipient address or ID")
   .option("--network <network>", "Network (ethereum, base, polygon, web2)")
-  .option("--gateway <gateway>", "Gateway (viem, stripe, paypal, visa, mastercard)")
+  .option("--gateway <gateway>", "Gateway (viem, stripe, paypal, visa, mastercard, googlepay, applepay)")
   .option("--description <desc>", "Payment description")
   .option("--wallet <alias>", "Wallet key alias in key store", "default_wallet")
   .action(async (opts) => {
@@ -278,7 +278,35 @@ program
         }),
       },
       {
-        label: "6️⃣  Over-limit payment (triggers policy engine)",
+        label: "6️⃣  AP2 Google Pay payment (web2)",
+        intent: PaymentIntentSchema.parse({
+          protocol: "ap2",
+          action: "pay",
+          amount: "35.00",
+          currency: "USD",
+          recipient: "merchant-gpay-demo",
+          network: "web2",
+          gateway: "googlepay",
+          description: "Demo: AP2 Google Pay payment",
+          metadata: { paymentToken: "dryrun-gpay-token" },
+        }),
+      },
+      {
+        label: "7️⃣  AP2 Apple Pay payment (web2)",
+        intent: PaymentIntentSchema.parse({
+          protocol: "ap2",
+          action: "pay",
+          amount: "59.99",
+          currency: "USD",
+          recipient: "merchant-applepay-demo",
+          network: "web2",
+          gateway: "applepay",
+          description: "Demo: AP2 Apple Pay payment",
+          metadata: { paymentToken: "dryrun-applepay-token" },
+        }),
+      },
+      {
+        label: "8️⃣  Over-limit payment (triggers policy engine)",
         intent: PaymentIntentSchema.parse({
           protocol: "ap2",
           action: "pay",
