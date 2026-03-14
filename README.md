@@ -30,6 +30,8 @@
   - [Web2 — PayPal](#web2--paypal)
   - [Web2 — Visa Direct](#web2--visa-direct)
   - [Web2 — Mastercard Send](#web2--mastercard-send)
+  - [Web2 — Google Pay](#web2--google-pay)
+  - [Web2 — Apple Pay](#web2--apple-pay)
 - [Security](#security)
   - [AWS KMS Integration](#aws-kms-integration)
   - [Encrypted Key Storage (SQLite)](#encrypted-key-storage-sqlite)
@@ -96,7 +98,7 @@ payment rails.
 |---|---|
 | **Dual protocol support** | x402 (HTTP 402 + onchain settlement) and AP2 (Google's mandate-based agent payments) |
 | **Web3 transactions** | Ethereum, Base, Polygon via [Viem](https://viem.sh) — native ETH and ERC-20 (USDC, etc.) |
-| **Web2 gateways** | Stripe, PayPal, Visa Direct, Mastercard Send |
+| **Web2 gateways** | Stripe, PayPal, Visa Direct, Mastercard Send, Google Pay, Apple Pay |
 | **Key management** | AWS KMS encryption/decryption; encrypted at-rest storage in SQLite |
 | **Policy engine** | Per-tx limits, daily/weekly/monthly aggregates, time-of-day, blacklist/whitelist, currency restrictions |
 | **Human-in-the-loop** | Automatic escalation on policy violations via CLI prompt, chat prompt, or web API |
@@ -144,9 +146,10 @@ payment rails.
 │  │  ┌──────────┐  ┌────────┐  ┌────────┐  ┌──────┐  │              │
 │  │  │  Viem    │  │ Stripe │  │ PayPal │  │ Visa │  │   ┌────────┐ │
 │  │  │ (ETH/    │  │        │  │        │  │ MC   │  │   │AWS KMS │ │
-│  │  │  ERC20)  │  │        │  │        │  │      │  │   │(decrypt│ │
-│  │  └──────────┘  └────────┘  └────────┘  └──────┘  │◄──│ keys)  │ │
-│  └──────────────────┬───────────────────────────────┘   └────────┘ │
+│  │  │  ERC20)  │  │        │  │        │  │ GPay │  │   │(decrypt│ │
+│  │  └──────────┘  └────────┘  └────────┘  │ APay │  │◄──│ keys)  │ │
+│  │                                        └──────┘  │   └────────┘ │
+│  └──────────────────┬───────────────────────────────┘              │
 │                     │                                              │
 │  ┌──────────────────▼───────────────────────────────┐              │
 │  │                  SQLite                          │              │
@@ -185,7 +188,7 @@ agent-payments-skill/
 │   │   ├── web3/
 │   │   │   └── ethereum.ts           # Viem-based ETH/ERC-20 tx producer
 │   │   └── web2/
-│   │       └── gateways.ts           # Stripe, PayPal, Visa, Mastercard
+│   │       └── gateways.ts           # Stripe, PayPal, Visa, Mastercard, Google Pay, Apple Pay
 │   ├── kms/
 │   │   └── aws-kms.ts               # AWS KMS encrypt/decrypt (delegates to dry-run when enabled)
 │   ├── dry-run/
@@ -261,7 +264,9 @@ User/Agent input
                     │  Execute Payment    │
                     │  (Viem / Stripe /   │
                     │   PayPal / Visa /   │
-                    │   Mastercard)       │
+                    │   Mastercard /      │
+                    │   Google Pay /      │
+                    │   Apple Pay)        │
                     └──────────┬──────────┘
                                │
                     ┌──────────▼──────────┐
@@ -406,6 +411,47 @@ Uses Mastercard Send Transfer API.
 - OAuth 1.0a authentication (consumer key + signing key from KMS)
 - Supports credit and debit funding sources
 
+### Web2 — Google Pay
+
+Uses the [Google Pay API](https://developers.google.com/pay/api) for server-side payment token processing.
+
+- The client obtains a payment token via the Google Pay JS API and passes it to the skill
+  in `metadata.paymentToken`
+- The server processes the token against the Google Pay payment gateway endpoint
+- Supports `PAN_ONLY` and `CRYPTOGRAM_3DS` authentication methods
+- Configurable card networks: Visa, Mastercard, Amex, Discover, JCB
+- Merchant ID and merchant key decrypted from AWS KMS at runtime
+- Environment configurable between `TEST` and `PRODUCTION`
+
+**Required metadata fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `paymentToken` | ✅ | Encrypted payment token from the Google Pay JS API client |
+| `countryCode` | ❌ | ISO 3166-1 alpha-2 country code (default: `US`) |
+
+### Web2 — Apple Pay
+
+Uses the [Apple Pay API](https://developer.apple.com/apple-pay/) for server-side merchant
+validation and payment token processing.
+
+- The client obtains an encrypted payment token via the Apple Pay JS API and passes it to
+  the skill in `metadata.paymentToken`
+- Optional server-to-server merchant session validation with Apple's servers
+  (when `metadata.validationURL` is provided)
+- Token is forwarded to the payment processor for decryption and authorization
+- Configurable supported networks: Visa, Mastercard, Amex, Discover
+- Merchant capabilities: 3DS, credit, and debit support
+- Requires a verified domain registered with Apple
+- Merchant ID, certificate, key, and processor key decrypted from AWS KMS
+
+**Required metadata fields:**
+
+| Field | Required | Description |
+|---|---|---|
+| `paymentToken` | ✅ | Encrypted payment token from the Apple Pay JS API client |
+| `validationURL` | ❌ | Apple's merchant validation URL (for session validation step) |
+
 ---
 
 ## Security
@@ -434,7 +480,7 @@ The `encrypted_keys` table stores AWS KMS-encrypted blobs:
 | Column | Type | Description |
 |---|---|---|
 | `id` | TEXT PK | UUID |
-| `key_type` | TEXT | `web3_private_key`, `stripe_token`, `paypal_token`, `visa_token`, `mastercard_token` |
+| `key_type` | TEXT | `web3_private_key`, `stripe_token`, `paypal_token`, `visa_token`, `mastercard_token`, `googlepay_token`, `applepay_token` |
 | `key_alias` | TEXT UNIQUE | Human-readable name (e.g., `default_wallet`, `stripe_api_key`) |
 | `ciphertext` | BLOB | AWS KMS encrypted payload |
 | `kms_key_id` | TEXT | KMS key ARN used for encryption |
@@ -558,6 +604,8 @@ Every significant action writes to the `audit_log` table:
 | `payment` | `paypal_order_created` | After PayPal Order creation |
 | `payment` | `visa_payment_submitted` | After Visa Direct push |
 | `payment` | `mastercard_payment_submitted` | After MC Send transfer |
+| `payment` | `googlepay_payment_processed` | After Google Pay token processed |
+| `payment` | `applepay_payment_processed` | After Apple Pay token processed |
 | `payment` | `payment_rejected_by_human` | On human rejection |
 | `payment` | `payment_execution_failed` | On any execution error |
 | `policy` | `violations_detected` | When rules are violated |
@@ -611,7 +659,7 @@ CREATE TABLE encrypted_keys (
 CREATE TABLE transactions (
     id                TEXT PRIMARY KEY,
     protocol          TEXT NOT NULL,        -- 'x402' | 'ap2'
-    gateway           TEXT,                 -- 'viem' | 'stripe' | 'paypal' | 'visa' | 'mastercard'
+    gateway           TEXT,                 -- 'viem' | 'stripe' | 'paypal' | 'visa' | 'mastercard' | 'googlepay' | 'applepay'
     action            TEXT NOT NULL,
     amount            REAL NOT NULL,
     amount_usd        REAL NOT NULL,
@@ -691,9 +739,21 @@ cp config/default.yaml config/production.yaml
 
 # 6. Store encrypted keys (first-time setup)
 npx agent-payments keys store --alias default_wallet --type web3_private_key --value "0xYOUR_PRIVATE_KEY"
+
 npx agent-payments keys store --alias stripe_api_key --type stripe_token --value "sk_live_YOUR_STRIPE_KEY"
+
 npx agent-payments keys store --alias paypal_client_id --type paypal_token --value "YOUR_PAYPAL_CLIENT_ID"
 npx agent-payments keys store --alias paypal_secret --type paypal_token --value "YOUR_PAYPAL_SECRET"
+
+# Google Pay credentials
+npx agent-payments keys store --alias googlepay_merchant_id --type googlepay_token --value "YOUR_GOOGLE_MERCHANT_ID"
+npx agent-payments keys store --alias googlepay_merchant_key --type googlepay_token --value "YOUR_GOOGLE_MERCHANT_KEY"
+
+# Apple Pay credentials
+npx agent-payments keys store --alias applepay_merchant_id --type applepay_token --value "merchant.com.yourapp"
+npx agent-payments keys store --alias applepay_merchant_cert --type applepay_token --value "BASE64_ENCODED_CERT"
+npx agent-payments keys store --alias applepay_merchant_key --type applepay_token --value "BASE64_ENCODED_KEY"
+npx agent-payments keys store --alias applepay_processor_key --type applepay_token --value "YOUR_PROCESSOR_API_KEY"
 
 # 7. Register open agents skill
 npx skills add ./agent-payments-skill
@@ -729,7 +789,7 @@ policy engine, human-in-the-loop confirmation, audit trail, CLI, and web API —
 | **Encryption key** | KMS key ARN | 256-bit hex key, auto-generated on first run and written to `.env` |
 | **Wallet keys** | Viem `generatePrivateKey()` → encrypted via KMS | Viem `generatePrivateKey()` → encrypted via local AES → stored in SQLite |
 | **Web3 payments** | Real on-chain transactions via Viem | Stub: returns fake tx hash, simulated confirmation |
-| **Web2 payments** | Real API calls to Stripe / PayPal / Visa / MC | Stub: returns fake transaction IDs, simulated status |
+| **Web2 payments** | Real API calls to Stripe / PayPal / Visa / MC / Google Pay / Apple Pay | Stub: returns fake transaction IDs, simulated status |
 | **Policy engine** | ✅ runs normally | ✅ runs normally |
 | **Human confirmation** | ✅ prompts on violations | ✅ prompts on violations |
 | **Audit trail** | ✅ writes to SQLite + Winston | ✅ writes to SQLite + Winston (tagged with `dryrun_*` actions) |
@@ -874,9 +934,32 @@ make the demo feel realistic.
 }
 ```
 
+**Google Pay stub — success:**
+```json
+{
+  "gateway": "googlepay",
+  "transaction_id": "GPAY-DRYRUN-A1B2C3D4E5F6",
+  "status": "success",
+  "amount": "35.00",
+  "currency": "USD"
+}
+```
+
+**Apple Pay stub — success:**
+```json
+{
+  "gateway": "applepay",
+  "transaction_id": "APAY-DRYRUN-A1B2C3D4E5F6",
+  "status": "success",
+  "amount": "59.99",
+  "currency": "USD",
+  "receipt_url": "https://sandbox.apple.com/dryrun/receipt"
+}
+```
+
 ### Demo Command
 
-The `demo` command runs 6 pre-built sample payments across all supported
+The `demo` command runs 8 pre-built sample payments across all supported
 gateways and protocols:
 
 ```bash
@@ -884,7 +967,7 @@ openclaw-payment demo --stub-mode success
 ```
 
 ```
-🧪 ══════════════════════════════════════════════
+🧪 ════════════════════════════════════════════════
    AGENTIC PAYMENT SKILL — INTERACTIVE DEMO
    Stub mode: success
 ══════════════════════════════════════════════════
@@ -904,7 +987,13 @@ openclaw-payment demo --stub-mode success
 ─── 5️⃣  AP2 Visa Direct payment (web2) ───
   ✅ Success | ID: VISA-DRYRUN-1739184000000
 
-─── 6️⃣  Over-limit payment (triggers policy engine) ───
+─── 6️⃣  AP2 Google Pay payment (web2) ───
+  ✅ Success | ID: GPAY-DRYRUN-A1B2C3D4E5F6
+
+─── 7️⃣  AP2 Apple Pay payment (web2) ───
+  ✅ Success | ID: APAY-DRYRUN-A1B2C3D4E5F6
+
+─── 8️⃣  Over-limit payment (triggers policy engine) ───
   ❌ Not executed: Payment rejected by human confirmation.
   ⚠️  Policy: [single_transaction.max_amount_usd] Amount $99999.99 exceeds limit of $1000.00
 
@@ -967,6 +1056,8 @@ easily distinguishable from production entries:
 | `dryrun_paypal` | Simulated PayPal payment |
 | `dryrun_visa` | Simulated Visa Direct payment |
 | `dryrun_mastercard` | Simulated Mastercard Send payment |
+| `dryrun_googlepay` | Simulated Google Pay payment |
+| `dryrun_applepay` | Simulated Apple Pay payment |
 | `dryrun_web2_executed` | Web2 payment stub completed |
 | `dryrun_web3_confirmed` | Web3 tx stub confirmed |
 
@@ -1099,6 +1190,38 @@ web2:
     enabled: true
     base_url: "https://sandbox.api.mastercard.com"
                                      # Live: https://api.mastercard.com
+
+  googlepay:
+    enabled: true
+    environment: "TEST"              # "TEST" or "PRODUCTION"
+    base_url: "https://pay.google.com/gp/p"
+    allowed_card_networks:           # Card networks accepted via Google Pay
+      - "AMEX"
+      - "DISCOVER"
+      - "JCB"
+      - "MASTERCARD"
+      - "VISA"
+    allowed_auth_methods:            # Token authentication methods
+      - "PAN_ONLY"                   # PAN with expiry + billing address
+      - "CRYPTOGRAM_3DS"             # 3D Secure device token
+
+  applepay:
+    enabled: true
+    base_url: "https://apple-pay-gateway.apple.com/paymentservices"
+                                     # Apple Pay payment services endpoint
+    domain: "your-domain.example.com"
+                                     # Must be verified with Apple
+    display_name: "OpenClaw Payments"
+                                     # Shown on the Apple Pay payment sheet
+    supported_networks:              # Card networks accepted via Apple Pay
+      - "visa"
+      - "masterCard"
+      - "amex"
+      - "discover"
+    merchant_capabilities:           # Supported capabilities
+      - "supports3DS"
+      - "supportsCredit"
+      - "supportsDebit"
 
 # ── AWS KMS ──────────────────────────────────────────────────────────
 # NOTE: AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
@@ -1245,7 +1368,7 @@ agent-payments pay [options]
 | `--currency <string>` | ✅ | Currency code (`USDC`, `ETH`, `USD`, `EUR`) |
 | `--to <string>` | ✅ | Recipient address or merchant ID |
 | `--network <string>` | ❌ | Blockchain network (`ethereum`, `base`, `polygon`, `web2`) |
-| `--gateway <string>` | ❌ | Payment gateway (`viem`, `stripe`, `paypal`, `visa`, `mastercard`) |
+| `--gateway <string>` | ❌ | Payment gateway (`viem`, `stripe`, `paypal`, `visa`, `mastercard`, `googlepay`, `applepay`) |
 | `--description <string>` | ❌ | Human-readable description |
 | `--wallet <string>` | ❌ | Wallet key alias in encrypted store (default: `default_wallet`) |
 
@@ -1318,6 +1441,8 @@ agent-payments keys delete stripe_api_key
 | `paypal_token` | `paypal_client_id`, `paypal_secret` | PayPal OAuth2 |
 | `visa_token` | `visa_user_id`, `visa_password` | Visa Direct auth |
 | `mastercard_token` | `mastercard_consumer_key`, `mastercard_signing_key` | MC Send auth |
+| `googlepay_token` | `googlepay_merchant_id`, `googlepay_merchant_key` | Google Pay token processing |
+| `applepay_token` | `applepay_merchant_id`, `applepay_merchant_cert`, `applepay_merchant_key`, `applepay_processor_key` | Apple Pay merchant validation & token processing |
 
 ### `tx` — Transaction Lookup
 
@@ -1425,7 +1550,7 @@ Execute a payment from a `PaymentIntent`.
 | `currency` | string | ✅ | Currency code |
 | `recipient` | string | ✅ | Destination address or merchant ID |
 | `network` | string | ❌ | Blockchain network name |
-| `gateway` | string | ❌ | Explicit gateway selection |
+| `gateway` | string | ❌ | Explicit gateway selection (`viem`, `stripe`, `paypal`, `visa`, `mastercard`, `googlepay`, `applepay`) |
 | `description` | string | ❌ | Human-readable description |
 | `metadata` | object | ❌ | Arbitrary metadata |
 | `walletKeyAlias` | string | ❌ | Key alias (default: `"default_wallet"`) |
@@ -1693,7 +1818,7 @@ The agent is instructed to output this exact JSON when a payment is needed:
   "currency": "USDC | ETH | USD | EUR",
   "recipient": "<address or merchant ID>",
   "network": "ethereum | base | polygon | web2",
-  "gateway": "viem | visa | mastercard | paypal | stripe | null",
+  "gateway": "viem | visa | mastercard | paypal | stripe | googlepay | applepay | null",
   "description": "<human-readable description>",
   "metadata": {}
 }
@@ -1712,6 +1837,8 @@ The `SKILL.md` instructs the agent:
 | User mentions "x402", "stablecoin", "USDC", "onchain" | **x402** |
 | Payment involves a mandate, delegated purchase | **AP2** |
 | Traditional card/gateway payment via agent | **AP2** |
+| User mentions "Google Pay", "GPay" | **AP2** → `googlepay` gateway |
+| User mentions "Apple Pay" | **AP2** → `applepay` gateway |
 | Crypto currency (USDC, ETH, DAI) | **web3** (Viem) |
 | Fiat currency (USD, EUR) | **web2** (Stripe default) |
 
@@ -1914,6 +2041,114 @@ agent-payments keys list
 agent-payments keys delete trading_wallet
 ```
 
+### Example 6 — Google Pay Payment via Web API
+
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "ap2",
+    "action": "pay",
+    "amount": "35.00",
+    "currency": "USD",
+    "recipient": "merchant-gpay-001",
+    "gateway": "googlepay",
+    "description": "In-app purchase via Google Pay",
+    "metadata": {
+      "paymentToken": "<encrypted-token-from-google-pay-js-api>",
+      "countryCode": "US"
+    }
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "tx": {
+    "id": "d4e5f678-9012-bcde-f123-456789012345",
+    "protocol": "ap2",
+    "gateway": "googlepay",
+    "amount": 35.0,
+    "amount_usd": 35.0,
+    "currency": "USD",
+    "status": "executed"
+  },
+  "web2Result": {
+    "gateway": "googlepay",
+    "transaction_id": "GPAY-abc123def456",
+    "status": "success",
+    "amount": "35.00",
+    "currency": "USD"
+  },
+  "policyResult": {
+    "allowed": true,
+    "violations": [],
+    "requiresHumanConfirmation": false
+  },
+  "confirmationRequired": false
+}
+```
+
+> **Note:** The `paymentToken` in `metadata` must be the encrypted payment token
+> obtained from the client-side [Google Pay JS API](https://developers.google.com/pay/api).
+> The server never generates this token — it only processes it.
+
+### Example 7 — Apple Pay Payment via Web API
+
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "ap2",
+    "action": "pay",
+    "amount": "59.99",
+    "currency": "USD",
+    "recipient": "merchant-applepay-001",
+    "gateway": "applepay",
+    "description": "Checkout via Apple Pay",
+    "metadata": {
+      "paymentToken": "<encrypted-token-from-apple-pay-js-api>",
+      "validationURL": "https://apple-pay-gateway-cert.apple.com/paymentservices/startSession"
+    }
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "tx": {
+    "id": "e5f67890-1234-cdef-0123-567890123456",
+    "protocol": "ap2",
+    "gateway": "applepay",
+    "amount": 59.99,
+    "amount_usd": 59.99,
+    "currency": "USD",
+    "status": "executed"
+  },
+  "web2Result": {
+    "gateway": "applepay",
+    "transaction_id": "APAY-xyz789abc012",
+    "status": "success",
+    "amount": "59.99",
+    "currency": "USD",
+    "receipt_url": "https://example.com/receipt/xyz789"
+  },
+  "policyResult": {
+    "allowed": true,
+    "violations": [],
+    "requiresHumanConfirmation": false
+  },
+  "confirmationRequired": false
+}
+```
+
+> **Note:** The `paymentToken` must be the encrypted token from the client-side
+> [Apple Pay JS API](https://developer.apple.com/apple-pay/). The optional
+> `validationURL` triggers server-to-server merchant session validation with Apple
+> before the token is processed.
+
 ---
 
 ## Development
@@ -1970,6 +2205,9 @@ npm run dev          # ts-node src/index.ts
 | `SQLITE_BUSY` errors | Concurrent writes | Increase `database.busy_timeout_ms` or ensure WAL mode |
 | `Policy violations detected` (unexpected) | Aggregate limits hit | Check `agent-payments audit --category policy` and adjust `policy.rules` |
 | Web API not starting | Port conflict | Change `web_api.port` in config |
+| `Google Pay requires a 'paymentToken' in metadata` | Missing client-side token | Ensure the Google Pay JS API token is passed in `metadata.paymentToken` |
+| `Apple Pay requires a 'paymentToken' in metadata` | Missing client-side token | Ensure the Apple Pay JS API token is passed in `metadata.paymentToken` |
+| `Apple Pay merchant validation failed` | Invalid cert or domain | Verify domain is registered with Apple and `applepay_merchant_cert` is valid |
 
 ### Debugging
 
