@@ -2,8 +2,8 @@
 
 # Skill Metadata
 skill:
-  name: agent-payments
-  version: 0.3.0
+  name: agentic-payments-bot
+  version: 0.5.0
 
 # ── Dry Run Mode ────────────────────────────────────────────────────
 # When enabled, no real payments are made. Gateways return stub responses,
@@ -105,9 +105,36 @@ web2:
 # AWS KMS Configuration (access tokens via env vars only)
 kms:
   enabled: true
+
+  # KMS provider selection:
+  #   "aws-kms"     — AWS KMS (production cloud). Requires AWS env vars.
+  #   "os-keyring"  — OS-native keyring: KDE Wallet / GNOME Keyring (Linux),
+  #                    Keychain (macOS), Credential Manager (Windows).
+  #                    Uses @aspect-build/keytar. Falls back to local-aes
+  #                    on headless systems without D-Bus.
+  #   "dbus-secret" — Linux-only: D-Bus Secret Service API via dbus-next
+  #                    (pure JS, no native compilation). Works with GNOME
+  #                    Keyring and KDE Wallet (Secret Service bridge).
+  #                    Falls back to local-aes on headless.
+  #   "gpg"         — GnuPG encryption. Ideal for headless Linux servers
+  #                    without D-Bus. Requires a GPG keypair.
+  #   "local-aes"   — Local AES-256-GCM. Key from DRYRUN_ENCRYPTION_KEY
+  #                    env var (auto-generated if missing). No external deps.
+  provider: "aws-kms"
+
+  # AWS KMS settings (only used when provider is "aws-kms")
   region: "us-east-1"
   key_id_env: "AWS_KMS_KEY_ID"
   # AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY from environment
+
+  # Linux keyring backend (only used when provider is "os-keyring")
+  #   "keytar"    — @aspect-build/keytar (native addon, full cross-platform)
+  #   "dbus-next" — Pure JS D-Bus Secret Service client (Linux only)
+  linux_keyring_backend: "keytar"
+
+  # GnuPG settings (only used when provider is "gpg")
+  # gpg_key_id: "your-gpg-key-fingerprint-or-email@example.com"
+  # gpg_binary: "gpg2"         # Path to gpg binary (default: gpg2)
 
 # Policy Engine
 policy:
