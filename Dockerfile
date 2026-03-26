@@ -6,20 +6,23 @@
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ── Stage 1: Build the payment skill ─────────────────────────────────────
-FROM node:22-bookworm-slim AS builder
+FROM node:trixie AS builder
+# FROM node:22-bookworm-slim AS builder
 
 WORKDIR /build
 
 # Install build dependencies for better-sqlite3 (native addon)
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends python3 make g++ && \
+    apt-get install -y --no-install-recommends python3 make g++ sqlite3 gnupg2 && \
     rm -rf /var/lib/apt/lists/*
 
 # Copy package manifests first for layer caching
-COPY package.json package-lock.json tsconfig.json ./
+COPY package.json tsconfig.json ./
+# COPY package.json package-lock.json tsconfig.json ./
 
 # Install all dependencies (including devDependencies for tsc)
-RUN npm ci
+RUN npm install --verbose
+# RUN npm ci
 
 # Copy source and config
 COPY src/ src/
@@ -27,13 +30,14 @@ COPY config/ config/
 COPY SKILL.md ./
 
 # Compile TypeScript → dist/
-RUN npm run build
+RUN npm run build --verbose
 
 # Prune devDependencies for a leaner production image
 RUN npm prune --production
 
 # ── Stage 2: Production runtime ──────────────────────────────────────────
-FROM node:22-bookworm-slim AS runtime
+FROM node:trixie AS runtime
+# FROM node:22-bookworm-slim AS runtime
 
 # Install runtime system dependencies
 RUN apt-get update && \
@@ -46,8 +50,8 @@ RUN apt-get update && \
     rm -rf /var/lib/apt/lists/*
 
 # Create a non-root user for both services
-RUN groupadd --gid 1000 openclaw && \
-    useradd --uid 1000 --gid openclaw --shell /bin/bash --create-home openclaw
+RUN groupadd --gid 1001 openclaw && \
+    useradd --uid 1001 --gid openclaw --shell /bin/bash --create-home openclaw
 
 # ── Install OpenClaw globally ────────────────────────────────────────────
 RUN npm install -g openclaw@latest
