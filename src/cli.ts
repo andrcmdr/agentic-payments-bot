@@ -17,7 +17,7 @@ const program = new Command();
 program
   .name("openclaw-payment")
   .description("OpenClaw Agentic Payment Skill — CLI Interface")
-  .version("0.4.0")
+  .version("0.5.0")
   .option("-c, --config <path>", "Path to YAML config file", "config/default.yaml")
   .option("--dry-run", "Enable dry-run mode (no real payments, no AWS KMS)");
 
