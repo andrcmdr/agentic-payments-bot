@@ -23,7 +23,11 @@
 - [Quick Start with Docker and Docker Compose](#quick-start)
 - [Supported Protocols](#supported-protocols)
   - [x402 Protocol](#x402-protocol)
+    - [x402 Client (Paying for Resources)](#x402-client-paying-for-resources)
+    - [x402 Server (Accepting Payments)](#x402-server-accepting-payments)
   - [AP2 Protocol (Agent Payments Protocol)](#ap2-protocol-agent-payments-protocol)
+    - [AP2 Client (Submitting Mandates)](#ap2-client-submitting-mandates)
+    - [AP2 Server (Processing Mandates)](#ap2-server-processing-mandates)
   - [Protocol Router](#protocol-router)
 - [Payment Backends](#payment-backends)
   - [Web3 — Ethereum (Viem)](#web3--ethereum-viem)
@@ -33,6 +37,8 @@
   - [Web2 — Mastercard Send](#web2--mastercard-send)
   - [Web2 — Google Pay](#web2--google-pay)
   - [Web2 — Apple Pay](#web2--apple-pay)
+  - [x402 — Remote Resource Payment](#x402--remote-resource-payment)
+  - [AP2 — Remote Mandate Payment](#ap2--remote-mandate-payment)
 - [Security](#security)
   - [KMS Provider System](#kms-provider-system)
     - [Provider Overview](#provider-overview)
@@ -76,6 +82,17 @@
     - [GET /api/v1/pending](#get-apiv1pending)
     - [GET /api/v1/transactions/:txId](#get-apiv1transactionstxid)
     - [GET /api/v1/audit](#get-apiv1audit)
+  - [x402 Server Endpoints](#x402-server-endpoints)
+    - [GET /api/v1/x402/premium/data (Paywall-Protected)](#get-apiv1x402premiumdata-paywall-protected)
+    - [GET /api/v1/x402/pricing](#get-apiv1x402pricing)
+    - [POST /api/v1/x402/verify](#post-apiv1x402verify)
+  - [AP2 Server Endpoints](#ap2-server-endpoints)
+    - [POST /api/v1/ap2/mandates](#post-apiv1ap2mandates)
+    - [GET /api/v1/ap2/mandates](#get-apiv1ap2mandates)
+    - [GET /api/v1/ap2/mandates/:mandateId](#get-apiv1ap2mandatesmandateid)
+    - [POST /api/v1/ap2/sign-mandate](#post-apiv1ap2sign-mandate)
+    - [POST /api/v1/ap2/payment-credentials](#post-apiv1ap2payment-credentials)
+    - [POST /api/v1/ap2/process-payment](#post-apiv1ap2process-payment)
   - [Error Responses](#error-responses)
 - [OpenClaw Chat Integration](#openclaw-chat-integration)
   - [Payment Intent JSON Schema](#payment-intent-json-schema)
@@ -87,8 +104,12 @@
   - [Example 3 — AI Chat-Driven Payment](#example-3--ai-chat-driven-payment)
   - [Example 4 — Policy Violation & Human Confirmation](#example-4--policy-violation--human-confirmation)
   - [Example 5 — Key Management](#example-5--key-management)
-  - [Example 6 — Google Pay Payment via Web API](example-6--google-pay-payment-via-web-api)
+  - [Example 6 — Google Pay Payment via Web API](#example-6--google-pay-payment-via-web-api)
   - [Example 7 — Apple Pay Payment via Web API](#example-7--apple-pay-payment-via-web-api)
+  - [Example 8 — x402 Paywall (External Agent Paying You)](#example-8--x402-paywall-external-agent-paying-you)
+  - [Example 9 — AP2 Mandate (External Agent Paying You)](#example-9--ap2-mandate-external-agent-paying-you)
+  - [Example 10 — x402 Remote Resource Payment (Paying Another Service)](#example-10--x402-remote-resource-payment-paying-another-service)
+  - [Example 11 — AP2 Remote Mandate Payment (Paying Another Service)](#example-11--ap2-remote-mandate-payment-paying-another-service)
 - [Development](#development)
   - [Build](#build)
   - [Run Tests](#run-tests)
@@ -109,8 +130,10 @@ payment rails.
 | Capability | Details |
 |---|---|
 | **Dual protocol support** | x402 (HTTP 402 + onchain settlement) and AP2 (Google's mandate-based agent payments) |
+| **Dual role: server + client** | Acts as a **payment gateway** (accepts payments from external agents via x402/AP2 server endpoints) and as a **payment client** (makes payments to external services via all backends) |
 | **Web3 transactions** | Ethereum, Base, Polygon via [Viem](https://viem.sh) — native ETH and ERC-20 (USDC, etc.) |
 | **Web2 gateways** | Stripe, PayPal, Visa Direct, Mastercard Send, Google Pay, Apple Pay |
+| **Protocol gateways** | x402 remote resource payment, AP2 remote mandate submission — paying any service that supports these protocols |
 | **Key management** | Pluggable KMS providers: AWS KMS, OS Keyring (KDE Wallet / GNOME Keyring / macOS Keychain / Windows Credential Manager), D-Bus Secret Service, GnuPG, Local AES-256-GCM |
 | **Policy engine** | Per-tx limits, daily/weekly/monthly aggregates, time-of-day, blacklist/whitelist, currency restrictions |
 | **Human-in-the-loop** | Automatic escalation on policy violations via CLI prompt, chat prompt, or web API |
@@ -125,55 +148,66 @@ payment rails.
 ### System Diagram
 
 ```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                          Agent Payments Skill                            │
-│  ┌───────────┐   ┌───────────────┐   ┌──────────┐                        │
-│  │  Chat UI  │   │   CLI (term)  │   │ Web API  │                        │
-│  └─────┬─────┘   └───────┬───────┘   └────┬─────┘                        │
-│        │                 │                │                              │
-│        ▼                 ▼                ▼                              │
-│  ┌─────────────────────────────────────────────────┐                     │
-│  │              Protocol Router                    │                     │
-│  │  (AI output parser → PaymentIntent → routing)   │                     │
-│  └───────────┬─────────────────┬───────────────────┘                     │
-│              │                 │                                         │
-│     ┌────────▼──────┐  ┌──────▼────────┐                                 │
-│     │  x402 Client  │  │  AP2 Client   │                                 │
-│     │  (HTTP 402)   │  │  (Mandates)   │                                 │
-│     └────────┬──────┘  └──────┬────────┘                                 │
-│              │                │                                          │
-│  ┌───────────▼────────────────▼───────────────┐                          │
-│  │            Policy Engine                   │                          │
-│  │  (compliance checks before execution)      │                          │
-│  │  ┌──────────────────────────────────────┐  │                          │
-│  │  │ • Single tx limit    • Blacklist     │  │                          │
-│  │  │ • Daily/Weekly/Mo    • Whitelist     │  │                          │
-│  │  │ • Time-of-day        • Currency      │  │                          │
-│  │  └──────────────────────────────────────┘  │                          │
-│  │       │ (violation?) ──► Human Confirm     │                          │
-│  └───────┼────────────────────────────────────┘                          │
-│          │                                                               │
-│  ┌───────▼──────────────────────────────────────────┐                    │
-│  │              Payment Execution                   │                    │
-│  │  ┌──────────┐  ┌────────┐  ┌────────┐  ┌──────┐  │ ┌───────────────┐  │
-│  │  │  Viem    │  │ Stripe │  │ PayPal │  │ Visa │  │ │  KMS Provider │  │
-│  │  │ (ETH/    │  │        │  │        │  │ MC   │  │ │ ┌───────────┐ │  │
-│  │  │  ERC20)  │  │        │  │        │  │ GPay │  │ │ │ AWS KMS   │ │  │
-│  │  └──────────┘  └────────┘  └────────┘  │ APay │  │ │ │ OS Keyring│ │  │
-│  │                                        └──────┘  │ │ │ D-Bus SS  │ │  │
-│  │                                                  │◄│ │ GnuPG     │ │  │
-│  │                                                  │ │ │ Local AES │ │  │
-│  │                                                  │ │ └───────────┘ │  │
-│  └──────────────────┬───────────────────────────────┘ └───────────────┘  │
-│                     │                                                    │
-│  ┌──────────────────▼───────────────────────────────┐                    │
-│  │                  SQLite                          │                    │
-│  │  ┌──────────────┐  ┌──────────┐  ┌────────────┐  │                    │
-│  │  │encrypted_keys│  │ transac- │  │ audit_log  │  │                    │
-│  │  │              │  │ tions    │  │            │  │                    │
-│  │  └──────────────┘  └──────────┘  └────────────┘  │                    │
-│  └──────────────────────────────────────────────────┘                    │
-└──────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│                           Agent Payments Skill                                    │
+│                                                                                   │
+│  ┌─────────────────── SERVER SIDE (Accept Payments) ───────────────────────────┐  │
+│  │                                                                             │  │
+│  │  External Agents ──► x402 Paywall Middleware (HTTP 402 flow)                │  │
+│  │                      AP2 Mandate Endpoints (mandate lifecycle)  ──► Payment │  │
+│  │                                                                   Execution │  │
+│  └─────────────────────────────────────────────────────────────────────────────┘  │
+│                                                                                   │
+│  ┌───────────┐   ┌───────────────┐   ┌──────────┐                                 │
+│  │  Chat UI  │   │   CLI (term)  │   │ Web API  │                                 │
+│  └─────┬─────┘   └───────┬───────┘   └────┬─────┘                                 │
+│        │                 │                │                                       │
+│        ▼                 ▼                ▼                                       │
+│  ┌─────────────────────────────────────────────────┐                              │
+│  │              Protocol Router                    │                              │
+│  │  (AI output parser → PaymentIntent → routing)   │                              │
+│  └────┬──────────┬─────────┬──────────┬────────────┘                              │
+│       │          │         │          │                                           │
+│  ┌────▼───┐ ┌───▼────┐ ┌───▼────┐ ┌───▼────┐                                      │
+│  │ web3   │ │ web2   │ │ x402   │ │ ap2    │                                      │
+│  │(Viem)  │ │(Stripe │ │(remote │ │(remote │                                      │
+│  │        │ │PayPal  │ │resource│ │mandate │                                      │
+│  │        │ │Visa MC │ │client) │ │client) │                                      │
+│  │        │ │GPay    │ │        │ │        │                                      │
+│  │        │ │APay)   │ │        │ │        │                                      │
+│  └────┬───┘ └───┬────┘ └───┬────┘ └───┬────┘                                      │
+│       │         │          │          │                                           │
+│  ┌────▼─────────▼──────────▼──────────▼────────┐                                  │
+│  │            Policy Engine                    │                                  │
+│  │  (compliance checks before execution)       │                                  │
+│  │  ┌───────────────────────────────────────┐  │                                  │
+│  │  │ • Single tx limit    • Blacklist      │  │                                  │
+│  │  │ • Daily/Weekly/Mo    • Whitelist      │  │                                  │
+│  │  │ • Time-of-day        • Currency       │  │                                  │
+│  │  └───────────────────────────────────────┘  │                                  │
+│  │       │ (violation?) ──► Human Confirm      │                                  │
+│  └───────┼─────────────────────────────────────┘                                  │
+│          │                                                                        │
+│  ┌───────▼─────────────────────────────────────┐  ┌───────────────┐               │
+│  │          Payment Execution                  │  │  KMS Provider │               │
+│  │  ┌────────┐ ┌────────┐ ┌────────┐ ┌──────┐  │  │ ┌───────────┐ │               │
+│  │  │ Viem   │ │ Stripe │ │ PayPal │ │ Visa │  │  │ │ AWS KMS   │ │               │
+│  │  │(ETH/   │ │        │ │        │ │ MC   │  │  │ │ OS Keyring│ │               │
+│  │  │ ERC20) │ │        │ │        │ │ GPay │  │  │ │ D-Bus SS  │ │               │
+│  │  │        │ │        │ │        │ │ APay │  │◄─│ │ GnuPG     │ │               │
+│  │  │        │ │        │ │        │ │ x402 │  │  │ │ Local AES │ │               │
+│  │  │        │ │        │ │        │ │ AP2  │  │  │ └───────────┘ │               │
+│  │  └────────┘ └────────┘ └────────┘ └──────┘  │  └───────────────┘               │
+│  └──────────────┬──────────────────────────────┘                                  │
+│                 │                                                                 │
+│  ┌──────────────▼──────────────────────────────┐                                  │
+│  │                  SQLite                     │                                  │
+│  │  ┌──────────────┐ ┌──────────┐ ┌──────────┐ │                                  │
+│  │  │encrypted_keys│ │transac-  │ │audit_log │ │                                  │
+│  │  │              │ │tions     │ │          │ │                                  │
+│  │  └──────────────┘ └──────────┘ └──────────┘ │                                  │
+│  └─────────────────────────────────────────────┘                                  │
+└───────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Directory Structure
@@ -190,15 +224,17 @@ agent-payments-skill/
 ├── src/
 │   ├── index.ts                      # Main entry point / orchestrator
 │   ├── cli.ts                        # CLI interface (Commander.js)
-│   ├── web-api.ts                    # REST API (Express)
+│   ├── web-api.ts                    # REST API (Express) — includes x402/AP2 server endpoints
 │   ├── config/
 │   │   └── loader.ts                 # YAML config loader + Zod validation
 │   ├── protocols/
 │   │   ├── router.ts                 # Protocol router + AI output parser
 │   │   ├── x402/
-│   │   │   └── client.ts             # x402 HTTP 402 client
+│   │   │   ├── client.ts             # x402 HTTP 402 client (paying for resources)
+│   │   │   └── server.ts             # x402 paywall middleware & settlement (accepting payments)
 │   │   └── ap2/
-│   │       └── client.ts             # AP2 mandate-based client
+│   │       ├── client.ts             # AP2 mandate-based client (submitting mandates)
+│   │       └── server.ts             # AP2 mandate lifecycle server (processing mandates)
 │   ├── payments/
 │   │   ├── web3/
 │   │   │   └── ethereum.ts           # Viem-based ETH/ERC-20 tx producer
@@ -235,6 +271,8 @@ agent-payments-skill/
 
 ### Data Flow
 
+#### Client Side — Making Payments (Agent → External Services)
+
 ```
 User/Agent input
        │
@@ -247,8 +285,8 @@ User/Agent input
                                     ▼
                          ┌──────────────────────┐
                          │   Protocol Router    │
-                         │ (x402 or AP2, web3   │
-                         │  or web2 detection)  │
+                         │ (detect gateway:     │
+                         │  web3/web2/x402/ap2) │
                          └──────────┬───────────┘
                                     │
                                     ▼
@@ -280,21 +318,90 @@ User/Agent input
                             ▼    ▼
                     ┌──────────────────────┐
                     │  Decrypt Keys (KMS)  │
-                    └──────────┬───────────┘
-                               │
-                    ┌──────────▼──────────┐
-                    │  Execute Payment    │
-                    │  (Viem / Stripe /   │
-                    │   PayPal / Visa /   │
-                    │   Mastercard /      │
-                    │   Google Pay /      │
-                    │   Apple Pay)        │
-                    └──────────┬──────────┘
-                               │
-                    ┌──────────▼──────────┐
+                    └─────────┬────────────┘
+                              │
+              ┌───────────────┼────────────────┐
+              │               │                │
+     ┌────────▼──────┐ ┌──────▼──────┐ ┌───────▼───────┐
+     │ web3 (Viem)   │ │ web2        │ │ Protocol      │
+     │ ETH / ERC-20  │ │ Stripe      │ │ Clients       │
+     │               │ │ PayPal      │ │               │
+     │ Direct chain  │ │ Visa / MC   │ │ x402: discover│
+     │ transactions  │ │ GPay / APay │ │ → sign → pay  │
+     │               │ │             │ │ → get resource│
+     │               │ │             │ │               │
+     │               │ │             │ │ AP2: mandate  │
+     │               │ │             │ │ → sign → cred │
+     │               │ │             │ │ → submit      │
+     └────────┬──────┘ └──────┬──────┘ └───────┬───────┘
+              │               │                │
+              └───────────────┼────────────────┘
+                              │
+                    ┌─────────▼───────────┐
                     │  Update Transaction │
                     │  + Audit Log        │
                     └─────────────────────┘
+```
+
+#### Server Side — Accepting Payments (External Agents → This Service)
+
+```
+                    ┌──────────────────────────────────────┐
+                    │       External Agent Request         │
+                    └───────────┬──────────┬───────────────┘
+                                │          │
+               x402 path        │          │        AP2 path
+         ┌──────────────────────┘          └──────────────────────┐
+         │                                                        │
+         ▼                                                        ▼
+┌────────────────────────┐                          ┌──────────────────────────┐
+│ GET /x402/premium/data │                          │ POST /ap2/mandates       │
+│ (any paywall route)    │                          │ (accept mandate)         │
+└───────────┬────────────┘                          └────────────┬─────────────┘
+            │                                                    │
+     ┌──────┴──────┐                                             ▼
+     │ X-PAYMENT   │                              ┌──────────────────────────┐
+     │ header?     │                              │ POST /ap2/sign-mandate   │
+     └──┬──────┬───┘                              │ (credential provider)    │
+     no │      │ yes                              └────────────┬─────────────┘
+        ▼      │                                               │
+ ┌────────────┐│                                               ▼
+ │ HTTP 402   ││                              ┌──────────────────────────────┐
+ │ + payment  ││                              │ POST /ap2/payment-credentials│
+ │ requirem.  ││                              │ (issue scoped tokens)        │
+ │ in X-PAY-  ││                              └────────────┬─────────────────┘
+ │ MENT hdr   ││                                           │
+ └────────────┘│                                           ▼
+               ▼                              ┌──────────────────────────────┐
+    ┌─────────────────────┐                   │ POST /ap2/process-payment    │
+    │ Validate payload:   │                   └────────────┬─────────────────┘
+    │ • auth fields       │                                │
+    │ • amount ≥ required │                                │
+    │ • time bounds       │                                │
+    │ • payTo matches     │                                │
+    └──────────┬──────────┘                                │
+               │                                           │
+               ▼                                           ▼
+    ┌─────────────────────┐             ┌──────────────────────────────┐
+    │ Submit to on-chain  │             │ Route to internal backend:   │
+    │ facilitator for     │             │ • stripe  • paypal  • card   │
+    │ settlement          │             │ • crypto (Viem ETH/ERC-20)   │
+    └──────────┬──────────┘             └──────────────┬───────────────┘
+               │                                       │
+               ▼                                       ▼
+    ┌─────────────────────┐             ┌──────────────────────────────┐
+    │ HTTP 200            │             │ Return AP2PaymentResult:     │
+    │ + resource data     │             │ { mandate_id, status,        │
+    │ + X-PAYMENT-RESPONSE│             │   transaction_id, receipt }  │
+    │   (settlement proof)│             └──────────────┬───────────────┘
+    └──────────┬──────────┘                            │
+               │                                       │
+               └──────────────┬────────────────────────┘
+                              │
+                   ┌──────────▼──────────┐
+                   │  Audit Log (SQLite  │
+                   │  + Winston)         │
+                   └─────────────────────┘
 ```
 
 ---
@@ -377,17 +484,48 @@ Both services share the same SQLite database and encrypted key store through Doc
 `402 Payment Required` status code for internet-native stablecoin payments. It is stateless,
 HTTP-native, and developer-friendly.
 
-**How the skill uses x402:**
+The skill implements x402 in **both directions** — as a client (paying for resources) and as a
+server (accepting payments from external agents).
+
+#### x402 Client (Paying for Resources)
+
+When the skill needs to **pay for** an x402-protected resource (e.g., a premium API endpoint):
 
 1. **Discovery** — The client sends a `GET` request to a resource URL. If `402` is returned, the
-   response body (or headers) contains payment details: `scheme`, `network`, `amount`, `payTo`,
-   `asset`, and `maxTimeoutSeconds`.
+   response body (or `X-PAYMENT` header) contains payment details: `scheme`, `network`, `amount`,
+   `payTo`, `asset`, and `maxTimeoutSeconds`.
 2. **Payment** — The skill signs an EIP-3009 `transferWithAuthorization` using the wallet's
    private key (decrypted from KMS) via Viem. The signed payload is Base64-encoded and sent as
    the `X-PAYMENT` header on a retried `GET` request.
 3. **Settlement** — The resource server (or its facilitator) verifies and settles the payment
    onchain. A `200 OK` response is returned with the resource and an `X-PAYMENT-RESPONSE`
    header containing the settlement receipt (including `txHash`).
+
+**Trigger:** Set `gateway: "x402"` in the `PaymentIntent`, or use a URL as the `recipient` with
+`protocol: "x402"`. The protocol router will automatically detect this and route to the x402
+client.
+
+#### x402 Server (Accepting Payments)
+
+When the skill acts as a **payment provider** that accepts x402 payments from external agents:
+
+1. **Paywall** — Protected routes use the `x402Paywall` Express middleware. When an agent
+   requests a resource without an `X-PAYMENT` header, the server responds with `HTTP 402` and
+   includes payment requirements in the `X-PAYMENT` response header (Base64-encoded JSON).
+2. **Verification** — When the agent retries with an `X-PAYMENT` request header containing a
+   signed payment payload, the middleware validates the authorization fields (amount, recipient,
+   time bounds) and submits the payload to the on-chain facilitator for settlement.
+3. **Access** — After successful settlement, the middleware attaches an `X-PAYMENT-RESPONSE`
+   header with the settlement receipt and passes the request through to the actual resource
+   handler.
+
+**Server endpoints:**
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/x402/premium/data` | GET | Example paywall-protected resource |
+| `/api/v1/x402/pricing` | GET | List all registered x402-priced resources |
+| `/api/v1/x402/verify` | POST | Verify a settlement transaction hash |
 
 **Supported networks:** Ethereum Mainnet, Base, Polygon (configurable).
 
@@ -403,6 +541,9 @@ HTTP-native, and developer-friendly.
 cryptographically signed **Mandates** — verifiable credentials that capture user intent and
 constraints — to enable agents to transact on behalf of humans.
 
+The skill implements AP2 in **both directions** — as a client (submitting mandates to external
+services) and as a server (accepting and processing mandates from external agents).
+
 **AP2 Mandate Types:**
 
 | Mandate | Purpose |
@@ -411,7 +552,9 @@ constraints — to enable agents to transact on behalf of humans.
 | **CartMandate** | Locks a specific cart of items and price. Created after the agent finds products. |
 | **PaymentMandate** | Authorizes actual payment execution. Contains payment method reference and final amount. |
 
-**How the skill uses AP2:**
+#### AP2 Client (Submitting Mandates)
+
+When the skill needs to **pay** an external AP2-compliant service:
 
 1. **Create Mandate** — From a `PaymentIntent`, the skill constructs an AP2 mandate with intent
    details, amount constraints, validity window, and delegator info.
@@ -421,6 +564,35 @@ constraints — to enable agents to transact on behalf of humans.
    desired payment method type.
 4. **Submit Payment** — The signed mandate + credentials are sent to the merchant's payment
    processor for execution.
+
+**Trigger:** Set `gateway: "ap2"` in the `PaymentIntent`, or use a URL as the `recipient` with
+`protocol: "ap2"`. The protocol router will automatically detect this and route to the AP2
+client.
+
+#### AP2 Server (Processing Mandates)
+
+When the skill acts as a **payment provider** that accepts AP2 mandates from external agents:
+
+1. **Accept Mandate** — External agents `POST` a mandate to `/api/v1/ap2/mandates`. The server
+   validates the mandate structure, constraints, and expiry.
+2. **Sign Mandate** — Agents can request mandate signing via `/api/v1/ap2/sign-mandate`
+   (credential provider role).
+3. **Issue Credentials** — Agents obtain tokenized payment credentials scoped to a mandate via
+   `/api/v1/ap2/payment-credentials`.
+4. **Execute Payment** — Agents submit a mandate + payment method to
+   `/api/v1/ap2/process-payment`. The server routes the payment to the appropriate internal
+   backend (Stripe, PayPal, Viem, etc.) and returns the result.
+
+**Server endpoints:**
+
+| Endpoint | Method | Description |
+|---|---|---|
+| `/api/v1/ap2/mandates` | POST | Accept a new mandate from an agent |
+| `/api/v1/ap2/mandates` | GET | List all mandates |
+| `/api/v1/ap2/mandates/:id` | GET | Get mandate status |
+| `/api/v1/ap2/sign-mandate` | POST | Sign a mandate (credential provider) |
+| `/api/v1/ap2/payment-credentials` | POST | Issue tokenized payment credentials |
+| `/api/v1/ap2/process-payment` | POST | Execute mandate against internal payment backends |
 
 **Supported payment methods:** Card (Visa/MC via gateway), PayPal, Stripe, Crypto
 (transparently routed through the appropriate web2/web3 backend).
@@ -440,9 +612,27 @@ The protocol router (`src/protocols/router.ts`) is the entry point for all payme
    - The entire text as JSON (for direct API input)
 2. **Validates** with Zod schema enforcement
 3. **Routes** to the correct protocol + payment backend based on:
-   - Explicit `gateway` field (if provided)
+   - Explicit `gateway` field (if provided): `viem`, `stripe`, `paypal`, `visa`, `mastercard`,
+     `googlepay`, `applepay`, **`x402`**, or **`ap2`**
+   - URL detection (recipient starting with `http://` or `https://`):
+     - `protocol: "x402"` + URL recipient → x402 remote resource payment
+     - `protocol: "ap2"` + URL recipient → AP2 remote mandate submission
    - Currency-based heuristic (crypto currencies → web3/viem, fiat → web2/stripe)
    - Protocol hint (x402 → web3, AP2 → either)
+
+**Routing matrix:**
+
+| Gateway Value | Payment Type | Description |
+|---|---|---|
+| `viem` | `web3` | Direct ETH/ERC-20 transfer via Viem |
+| `stripe` | `web2` | Stripe Payment Intents |
+| `paypal` | `web2` | PayPal Orders API |
+| `visa` | `web2` | Visa Direct Push Payments |
+| `mastercard` | `web2` | Mastercard Send API |
+| `googlepay` | `web2` | Google Pay token processing |
+| `applepay` | `web2` | Apple Pay token processing |
+| `x402` | `x402` | Remote x402 resource payment (discover → pay → access) |
+| `ap2` | `ap2` | Remote AP2 mandate submission (create → sign → pay) |
 
 ---
 
@@ -543,6 +733,73 @@ validation and payment token processing.
 |---|---|---|
 | `paymentToken` | ✅ | Encrypted payment token from the Apple Pay JS API client |
 | `validationURL` | ❌ | Apple's merchant validation URL (for session validation step) |
+
+### x402 — Remote Resource Payment
+
+The x402 client (`src/protocols/x402/client.ts`) is integrated as a **payment backend** alongside
+Viem, Stripe, PayPal, etc. When the protocol router determines the payment should go through x402
+(e.g., the recipient is a URL of an x402-protected resource), the orchestrator invokes the full
+x402 client flow:
+
+1. **Discover** — `GET` the resource URL. If `402` is returned, parse payment requirements from
+   the `X-PAYMENT` header or response body.
+2. **Sign** — Build an EIP-3009 authorization payload and sign it with the wallet's private key.
+3. **Pay** — Re-`GET` the resource with the signed `X-PAYMENT` header.
+4. **Receive** — Obtain the resource data and settlement proof from `X-PAYMENT-RESPONSE`.
+
+**Trigger:** Set `gateway: "x402"` in the `PaymentIntent`, or use a URL as the recipient with
+`protocol: "x402"`.
+
+**Example intent:**
+```json
+{
+  "protocol": "x402",
+  "action": "pay",
+  "amount": "1.00",
+  "currency": "USDC",
+  "recipient": "https://api.example.com/premium/data",
+  "network": "base",
+  "gateway": "x402"
+}
+```
+
+In **dry-run mode**, the x402 client flow is fully stubbed — no real HTTP requests or on-chain
+transactions are made. The stub returns simulated settlement responses.
+
+### AP2 — Remote Mandate Payment
+
+The AP2 client (`src/protocols/ap2/client.ts`) is integrated as a **payment backend** for paying
+any AP2-compliant external service. When the protocol router determines the payment should go
+through AP2 (e.g., the recipient is a URL of an AP2 payment processor), the orchestrator invokes
+the full AP2 client flow:
+
+1. **Create Mandate** — Build an AP2 mandate from the `PaymentIntent` with intent details, amount
+   constraints, validity window, and delegator info.
+2. **Sign Mandate** — Send the mandate to the configured credential provider for user signature.
+3. **Get Credentials** — Obtain tokenized payment credentials for the signed mandate.
+4. **Submit Payment** — Send the signed mandate + credentials to the merchant's payment processor.
+
+**Trigger:** Set `gateway: "ap2"` in the `PaymentIntent`, or use a URL as the recipient with
+`protocol: "ap2"`.
+
+**Example intent:**
+```json
+{
+  "protocol": "ap2",
+  "action": "pay",
+  "amount": "49.99",
+  "currency": "USD",
+  "recipient": "https://merchant.example.com/ap2/process-payment",
+  "gateway": "ap2",
+  "description": "Premium subscription",
+  "metadata": {
+    "payment_method_type": "stripe"
+  }
+}
+```
+
+In **dry-run mode**, the AP2 client flow is fully stubbed — no real HTTP requests are made. The
+stub returns simulated mandate and payment responses.
 
 ---
 
@@ -1023,9 +1280,16 @@ Every significant action writes to the `audit_log` table:
 |---|---|---|
 | `system` | `skill_bootstrapped` | On startup |
 | `protocol` | `intent_routed` | After protocol router decision |
-| `protocol` | `x402_payment_submitted` | After x402 payment sent |
-| `protocol` | `ap2_mandate_signed` | After AP2 mandate signature |
-| `protocol` | `ap2_payment_submitted` | After AP2 payment execution |
+| `protocol` | `x402_payment_submitted` | After x402 client payment sent |
+| `protocol` | `ap2_mandate_signed` | After AP2 client mandate signature |
+| `protocol` | `ap2_payment_submitted` | After AP2 client payment execution |
+| `x402_server` | `payment_required` | x402 server returned 402 to an agent |
+| `x402_server` | `payment_settled` | x402 server settled a payment from an agent |
+| `x402_server` | `settlement_failed` | x402 server settlement failed |
+| `ap2_server` | `mandate_accepted` | AP2 server accepted a mandate from an agent |
+| `ap2_server` | `mandate_signed` | AP2 server signed a mandate |
+| `ap2_server` | `credentials_issued` | AP2 server issued payment credentials |
+| `ap2_server` | `payment_processed` | AP2 server executed a mandate payment |
 | `payment` | `eth_transfer_sent` | After Viem ETH tx broadcast |
 | `payment` | `erc20_transfer_sent` | After Viem ERC-20 tx broadcast |
 | `payment` | `web3_payment_confirmed` | After on-chain confirmation |
@@ -1035,6 +1299,8 @@ Every significant action writes to the `audit_log` table:
 | `payment` | `mastercard_payment_submitted` | After MC Send transfer |
 | `payment` | `googlepay_payment_processed` | After Google Pay token processed |
 | `payment` | `applepay_payment_processed` | After Apple Pay token processed |
+| `payment` | `x402_remote_payment_completed` | After x402 client resource access |
+| `payment` | `ap2_remote_payment_completed` | After AP2 client mandate submission |
 | `payment` | `payment_rejected_by_human` | On human rejection |
 | `payment` | `payment_execution_failed` | On any execution error |
 | `policy` | `violations_detected` | When rules are violated |
@@ -1996,8 +2262,13 @@ Health check endpoint.
 ```json
 {
   "status": "ok",
-  "skill": "agent-payments",
-  "version": "0.2.0"
+  "skill": "agentic-payments-bot",
+  "version": "0.5.0",
+  "dryRun": false,
+  "protocols": {
+    "x402": { "enabled": true },
+    "ap2": { "enabled": true }
+  }
 }
 ```
 
@@ -2029,11 +2300,11 @@ Execute a payment from a `PaymentIntent`.
 | `action` | `"pay"` | ✅ | Action (only `"pay"` supported) |
 | `amount` | string | ✅ | Decimal amount |
 | `currency` | string | ✅ | Currency code |
-| `recipient` | string | ✅ | Destination address or merchant ID |
+| `recipient` | string | ✅ | Destination address, merchant ID, **or URL** (for x402/AP2 remote payments) |
 | `network` | string | ❌ | Blockchain network name |
-| `gateway` | string | ❌ | Explicit gateway selection (`viem`, `stripe`, `paypal`, `visa`, `mastercard`, `googlepay`, `applepay`) |
+| `gateway` | string | ❌ | Explicit gateway selection: `viem`, `stripe`, `paypal`, `visa`, `mastercard`, `googlepay`, `applepay`, **`x402`**, **`ap2`** |
 | `description` | string | ❌ | Human-readable description |
-| `metadata` | object | ❌ | Arbitrary metadata |
+| `metadata` | object | ❌ | Arbitrary metadata (e.g., `paymentToken` for GPay/APay, `payment_method_type` for AP2) |
 | `walletKeyAlias` | string | ❌ | Key alias (default: `"default_wallet"`) |
 
 **Response `200` (success):**
@@ -2058,7 +2329,8 @@ Execute a payment from a `PaymentIntent`.
     "violations": [],
     "requiresHumanConfirmation": false
   },
-  "confirmationRequired": false
+  "confirmationRequired": false,
+  "dryRun": false
 }
 ```
 
@@ -2234,7 +2506,7 @@ Query the audit log with optional filters.
 
 | Param | Type | Description |
 |---|---|---|
-| `category` | string | Filter: `payment`, `policy`, `kms`, `protocol`, `system` |
+| `category` | string | Filter: `payment`, `policy`, `kms`, `protocol`, `system`, `x402_server`, `ap2_server` |
 | `tx_id` | string | Filter by transaction ID |
 | `since` | string | ISO 8601 timestamp lower bound |
 | `limit` | number | Max results (default: `100`) |
@@ -2260,6 +2532,393 @@ GET /api/v1/audit?category=policy&since=2026-02-10T00:00:00Z&limit=20
     "user_agent": null
   }
 ]
+```
+
+### x402 Server Endpoints
+
+These endpoints allow external agents and services to **pay you** via the x402 protocol.
+
+---
+
+#### `GET /api/v1/x402/premium/data` (Paywall-Protected)
+
+An example x402-protected resource. Returns premium data after successful payment.
+
+**Without `X-PAYMENT` header — Response `402`:**
+
+The server returns payment requirements in the `X-PAYMENT` response header:
+
+```
+HTTP/1.1 402 Payment Required
+X-PAYMENT: eyJzY2hlbWUiOiJleGFjdCIsIm5ldHdvcmsiOi4uLn0=
+Content-Type: application/json
+
+{
+  "error": "Payment Required",
+  "accepts": {
+    "scheme": "exact",
+    "network": "base",
+    "maxAmountRequired": "1000000",
+    "resource": "/api/v1/x402/premium/data",
+    "description": "Access to premium agentic data feed",
+    "mimeType": "application/json",
+    "payTo": "0x...",
+    "maxTimeoutSeconds": 60,
+    "asset": "USDC"
+  }
+}
+```
+
+**With valid `X-PAYMENT` header — Response `200`:**
+
+The agent sends a Base64-encoded signed payment payload:
+
+```
+GET /api/v1/x402/premium/data
+X-PAYMENT: eyJ4NDAyVmVyc2lvbiI6MSwi...
+```
+
+On successful settlement:
+
+```
+HTTP/1.1 200 OK
+X-PAYMENT-RESPONSE: eyJzdWNjZXNzIjp0cnVlLCJ0eEhhc2giOi4uLn0=
+Content-Type: application/json
+
+{
+  "data": "This is premium data, paid for via x402.",
+  "timestamp": "2026-03-06T12:00:00.000Z",
+  "source": "agentic-payments-bot"
+}
+```
+
+**x402 Payment Flow (from the agent's perspective):**
+
+```
+Agent                                Server
+  │                                    │
+  │── GET /api/v1/x402/premium/data ──►│
+  │                                    │
+  │◄── 402 + X-PAYMENT (requirements)──│
+  │                                    │
+  │   [sign EIP-3009 authorization]    │
+  │                                    │
+  │── GET /api/v1/x402/premium/data ──►│
+  │   X-PAYMENT: <signed payload>      │
+  │                                    │── [verify + settle on-chain]
+  │                                    │
+  │◄── 200 + X-PAYMENT-RESPONSE ───────│
+  │   + resource data                  │
+```
+
+---
+
+#### `GET /api/v1/x402/pricing`
+
+List all registered x402-priced resources.
+
+**Response `200`:**
+```json
+{
+  "resources": [
+    {
+      "route": "/api/v1/x402/premium/data",
+      "maxAmountRequired": "1000000",
+      "asset": "USDC",
+      "network": "base",
+      "payTo": "0x...",
+      "description": "Access to premium agentic data feed",
+      "mimeType": "application/json"
+    }
+  ]
+}
+```
+
+---
+
+#### `POST /api/v1/x402/verify`
+
+Verify a settlement transaction hash through the facilitator.
+
+**Request body:**
+```json
+{
+  "txHash": "0xabc123...",
+  "network": "base"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "verified": true,
+  "details": {
+    "blockNumber": 12345678,
+    "from": "0x...",
+    "to": "0x...",
+    "value": "1000000"
+  }
+}
+```
+
+### AP2 Server Endpoints
+
+These endpoints allow external agents to **pay you** via the AP2 mandate protocol. The server
+acts as a mandate issuer, credential provider, and payment processor.
+
+---
+
+#### `POST /api/v1/ap2/mandates`
+
+Accept a new mandate from an external agent.
+
+**Request body:**
+```json
+{
+  "mandate_id": "mandate_1709712000_abc123",
+  "version": "1.0",
+  "intent": {
+    "action": "pay",
+    "description": "Purchase premium API access",
+    "amount": {
+      "value": "49.99",
+      "currency": "USD"
+    },
+    "recipient": {
+      "id": "merchant-001",
+      "name": "Example Merchant"
+    }
+  },
+  "constraints": {
+    "max_amount": "49.99",
+    "valid_from": "2026-03-06T00:00:00.000Z",
+    "valid_until": "2026-03-06T01:00:00.000Z",
+    "single_use": true
+  },
+  "delegator": {
+    "agent_id": "claude-agent-001",
+    "user_id": "user-12345"
+  }
+}
+```
+
+**Response `201`:**
+```json
+{
+  "mandate_id": "mandate_1709712000_abc123",
+  "status": "accepted"
+}
+```
+
+**Response `400`:**
+```json
+{
+  "error": "Mandate has expired"
+}
+```
+
+**Response `409`:**
+```json
+{
+  "error": "Mandate ID already exists",
+  "mandate_id": "mandate_1709712000_abc123"
+}
+```
+
+---
+
+#### `GET /api/v1/ap2/mandates`
+
+List all accepted mandates.
+
+**Response `200`:**
+```json
+{
+  "mandates": [
+    {
+      "mandate_id": "mandate_1709712000_abc123",
+      "status": "accepted",
+      "amount": "49.99",
+      "currency": "USD",
+      "agent_id": "claude-agent-001",
+      "created_at": "2026-03-06T12:00:00.000Z",
+      "executed_at": null
+    }
+  ]
+}
+```
+
+---
+
+#### `GET /api/v1/ap2/mandates/:mandateId`
+
+Get the status of a specific mandate.
+
+**Response `200`:**
+```json
+{
+  "mandate_id": "mandate_1709712000_abc123",
+  "status": "executed",
+  "created_at": "2026-03-06T12:00:00.000Z",
+  "executed_at": "2026-03-06T12:01:00.000Z",
+  "transaction_id": "pi_3Abc123..."
+}
+```
+
+**Response `404`:**
+```json
+{
+  "error": "Mandate not found"
+}
+```
+
+---
+
+#### `POST /api/v1/ap2/sign-mandate`
+
+Sign a mandate (acting as a credential provider). In production, this verifies the delegator's
+identity and signs the mandate with the server's ECDSA key.
+
+**Request body:**
+```json
+{
+  "mandate": {
+    "mandate_id": "mandate_1709712000_abc123",
+    "version": "1.0",
+    "intent": { "..." : "..." },
+    "constraints": { "..." : "..." },
+    "delegator": { "..." : "..." }
+  }
+}
+```
+
+**Response `200`:**
+```json
+{
+  "signed_mandate": {
+    "mandate_id": "mandate_1709712000_abc123",
+    "version": "1.0",
+    "intent": { "..." : "..." },
+    "constraints": { "..." : "..." },
+    "delegator": { "..." : "..." },
+    "signature": "sig_1709712000_a1b2c3d4"
+  }
+}
+```
+
+---
+
+#### `POST /api/v1/ap2/payment-credentials`
+
+Issue tokenized payment credentials for a specific mandate and payment method.
+
+**Request body:**
+```json
+{
+  "mandate_id": "mandate_1709712000_abc123",
+  "payment_method_type": "stripe"
+}
+```
+
+**Response `200`:**
+```json
+{
+  "type": "stripe",
+  "details": {
+    "token": "tok_mandate_1709712000_abc123_1709712060000",
+    "scoped_to_mandate": "mandate_1709712000_abc123",
+    "max_amount": "49.99",
+    "currency": "USD"
+  }
+}
+```
+
+**Response `409` (mandate already executed):**
+```json
+{
+  "error": "Mandate already executed (single-use)"
+}
+```
+
+---
+
+#### `POST /api/v1/ap2/process-payment`
+
+Execute a mandate against the server's internal payment backends. This is the final step in the
+AP2 flow — the agent submits a mandate and payment method, and the server routes the payment to
+Stripe, PayPal, Viem, or any other configured backend.
+
+**Request body:**
+```json
+{
+  "mandate": {
+    "mandate_id": "mandate_1709712000_abc123",
+    "version": "1.0",
+    "intent": {
+      "action": "pay",
+      "description": "Premium API access",
+      "amount": { "value": "49.99", "currency": "USD" },
+      "recipient": { "id": "merchant-001" }
+    },
+    "constraints": {
+      "max_amount": "49.99",
+      "valid_from": "2026-03-06T00:00:00.000Z",
+      "valid_until": "2026-03-06T01:00:00.000Z",
+      "single_use": true
+    },
+    "delegator": { "agent_id": "claude-agent-001" },
+    "signature": "sig_1709712000_a1b2c3d4"
+  },
+  "payment_method": {
+    "type": "stripe",
+    "details": {
+      "token": "tok_mandate_1709712000_abc123_1709712060000"
+    }
+  }
+}
+```
+
+**Supported `payment_method.type` values:**
+
+| Type | Backend | Description |
+|---|---|---|
+| `stripe` | Stripe | Routes to Stripe Payment Intents API |
+| `paypal` | PayPal | Routes to PayPal Orders API |
+| `card` | Stripe (default) | Generic card payment, routes to Stripe |
+| `crypto` | Viem | On-chain transfer (ETH or ERC-20). Specify `details.network` and optionally `details.wallet_alias`. |
+| `bank_transfer` | — | Not yet supported |
+
+**Response `200` (success):**
+```json
+{
+  "mandate_id": "mandate_1709712000_abc123",
+  "status": "success",
+  "transaction_id": "pi_3Abc123...",
+  "receipt": {
+    "amount": "49.99",
+    "currency": "USD",
+    "timestamp": "2026-03-06T12:01:00.000Z",
+    "reference": "pi_3Abc123..."
+  }
+}
+```
+
+**Response `202` (pending):**
+```json
+{
+  "mandate_id": "mandate_1709712000_abc123",
+  "status": "pending",
+  "transaction_id": "pi_3Abc123..."
+}
+```
+
+**Response `400` (failed):**
+```json
+{
+  "mandate_id": "mandate_1709712000_abc123",
+  "status": "failed",
+  "error": "Mandate has expired"
+}
 ```
 
 ### Error Responses
@@ -2297,9 +2956,9 @@ The agent is instructed to output this exact JSON when a payment is needed:
   "action": "pay",
   "amount": "<decimal string>",
   "currency": "USDC | ETH | USD | EUR",
-  "recipient": "<address or merchant ID>",
+  "recipient": "<address or merchant ID or URL>",
   "network": "ethereum | base | polygon | web2",
-  "gateway": "viem | visa | mastercard | paypal | stripe | googlepay | applepay | null",
+  "gateway": "viem | visa | mastercard | paypal | stripe | googlepay | applepay | x402 | ap2 | null",
   "description": "<human-readable description>",
   "metadata": {}
 }
@@ -2314,9 +2973,11 @@ The `SKILL.md` instructs the agent:
 
 | Signal | Routed To |
 |---|---|
-| Target is an HTTP resource returning 402 | **x402** |
+| Target is an HTTP resource returning 402 | **x402** → `x402` gateway (client) |
+| Recipient is a URL + `protocol: "x402"` | **x402** → `x402` gateway (client, remote resource payment) |
 | User mentions "x402", "stablecoin", "USDC", "onchain" | **x402** |
 | Payment involves a mandate, delegated purchase | **AP2** |
+| Recipient is a URL + `protocol: "ap2"` | **AP2** → `ap2` gateway (client, remote mandate submission) |
 | Traditional card/gateway payment via agent | **AP2** |
 | User mentions "Google Pay", "GPay" | **AP2** → `googlepay` gateway |
 | User mentions "Apple Pay" | **AP2** → `applepay` gateway |
@@ -2630,6 +3291,322 @@ curl -X POST http://localhost:3402/api/v1/payment \
 > `validationURL` triggers server-to-server merchant session validation with Apple
 > before the token is processed.
 
+### Example 8 — x402 Paywall (External Agent Paying You)
+
+This demonstrates the **server side** — an external agent pays for access to a
+resource protected by the x402 paywall middleware.
+
+**Step 1 — Agent discovers payment requirements:**
+```bash
+# Agent requests the resource — gets 402 + payment details
+curl -v http://localhost:3402/api/v1/x402/premium/data
+```
+
+**Response:**
+```
+< HTTP/1.1 402 Payment Required
+< X-PAYMENT: eyJzY2hlbWUiOiJleGFjdCIsIm5ldHdvcmsiOiJiYXNlIiwi...
+<
+{
+  "error": "Payment Required",
+  "accepts": {
+    "scheme": "exact",
+    "network": "base",
+    "maxAmountRequired": "1000000",
+    "asset": "USDC",
+    "payTo": "0x...",
+    "resource": "/api/v1/x402/premium/data",
+    "description": "Access to premium agentic data feed"
+  }
+}
+```
+
+**Step 2 — Agent signs and submits payment:**
+```bash
+# Agent retries with a signed X-PAYMENT header
+curl -v http://localhost:3402/api/v1/x402/premium/data \
+  -H "X-PAYMENT: eyJ4NDAyVmVyc2lvbiI6MSwisc2NoZW1lIjoiZXhhY3QiLC..."
+```
+
+**Response (success):**
+```
+< HTTP/1.1 200 OK
+< X-PAYMENT-RESPONSE: eyJzdWNjZXNzIjp0cnVlLCJ0eEhhc2giOiIweGFiYy4uLiJ9
+<
+{
+  "data": "This is premium data, paid for via x402.",
+  "timestamp": "2026-03-06T12:00:00.000Z",
+  "source": "agentic-payments-bot"
+}
+```
+
+**Step 3 — Check available pricing:**
+```bash
+curl http://localhost:3402/api/v1/x402/pricing
+```
+
+**Response:**
+```json
+{
+  "resources": [
+    {
+      "route": "/api/v1/x402/premium/data",
+      "maxAmountRequired": "1000000",
+      "asset": "USDC",
+      "network": "base",
+      "payTo": "0x...",
+      "description": "Access to premium agentic data feed"
+    }
+  ]
+}
+```
+
+### Example 9 — AP2 Mandate (External Agent Paying You)
+
+This demonstrates the **server side** — an external agent submits an AP2 mandate
+and the server processes the payment internally.
+
+**Step 1 — Agent submits a mandate:**
+```bash
+curl -X POST http://localhost:3402/api/v1/ap2/mandates \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mandate_id": "mandate_1709712000_demo",
+    "version": "1.0",
+    "intent": {
+      "action": "pay",
+      "description": "API access subscription",
+      "amount": { "value": "29.99", "currency": "USD" },
+      "recipient": { "id": "merchant-001" }
+    },
+    "constraints": {
+      "max_amount": "29.99",
+      "valid_from": "2026-03-06T00:00:00.000Z",
+      "valid_until": "2026-03-07T00:00:00.000Z",
+      "single_use": true
+    },
+    "delegator": {
+      "agent_id": "external-agent-001",
+      "user_id": "user-42"
+    }
+  }'
+```
+
+**Response:**
+```json
+{
+  "mandate_id": "mandate_1709712000_demo",
+  "status": "accepted"
+}
+```
+
+**Step 2 — Agent requests mandate signing:**
+```bash
+curl -X POST http://localhost:3402/api/v1/ap2/sign-mandate \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mandate": {
+      "mandate_id": "mandate_1709712000_demo",
+      "version": "1.0",
+      "intent": {
+        "action": "pay",
+        "description": "API access subscription",
+        "amount": { "value": "29.99", "currency": "USD" },
+        "recipient": { "id": "merchant-001" }
+      },
+      "constraints": {
+        "max_amount": "29.99",
+        "valid_from": "2026-03-06T00:00:00.000Z",
+        "valid_until": "2026-03-07T00:00:00.000Z",
+        "single_use": true
+      },
+      "delegator": { "agent_id": "external-agent-001" }
+    }
+  }'
+```
+
+**Step 3 — Agent obtains payment credentials:**
+```bash
+curl -X POST http://localhost:3402/api/v1/ap2/payment-credentials \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mandate_id": "mandate_1709712000_demo",
+    "payment_method_type": "stripe"
+  }'
+```
+
+**Step 4 — Agent submits for payment processing:**
+```bash
+curl -X POST http://localhost:3402/api/v1/ap2/process-payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "mandate": {
+      "mandate_id": "mandate_1709712000_demo",
+      "version": "1.0",
+      "intent": {
+        "action": "pay",
+        "description": "API access subscription",
+        "amount": { "value": "29.99", "currency": "USD" },
+        "recipient": { "id": "merchant-001" }
+      },
+      "constraints": {
+        "max_amount": "29.99",
+        "valid_from": "2026-03-06T00:00:00.000Z",
+        "valid_until": "2026-03-07T00:00:00.000Z",
+        "single_use": true
+      },
+      "delegator": { "agent_id": "external-agent-001" },
+      "signature": "sig_1709712000_a1b2c3d4"
+    },
+    "payment_method": {
+      "type": "stripe",
+      "details": { "token": "tok_mandate_1709712000_demo_1709712060000" }
+    }
+  }'
+```
+
+**Response:**
+```json
+{
+  "mandate_id": "mandate_1709712000_demo",
+  "status": "success",
+  "transaction_id": "pi_3Abc123...",
+  "receipt": {
+    "amount": "29.99",
+    "currency": "USD",
+    "timestamp": "2026-03-06T12:01:00.000Z",
+    "reference": "pi_3Abc123..."
+  }
+}
+```
+
+**Step 5 — Verify mandate status:**
+```bash
+curl http://localhost:3402/api/v1/ap2/mandates/mandate_1709712000_demo
+```
+
+**Response:**
+```json
+{
+  "mandate_id": "mandate_1709712000_demo",
+  "status": "executed",
+  "created_at": "2026-03-06T12:00:00.000Z",
+  "executed_at": "2026-03-06T12:01:00.000Z",
+  "transaction_id": "pi_3Abc123..."
+}
+```
+
+### Example 10 — x402 Remote Resource Payment (Paying Another Service)
+
+This demonstrates the **client side** — your agent pays for access to an x402-protected
+resource hosted by another service.
+
+**Via Web API:**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "x402",
+    "action": "pay",
+    "amount": "1.00",
+    "currency": "USDC",
+    "recipient": "https://api.premium-service.com/v1/data",
+    "network": "base",
+    "gateway": "x402",
+    "description": "Access premium data via x402"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "tx": {
+    "id": "f6789012-3456-def0-1234-567890abcdef",
+    "protocol": "x402",
+    "gateway": "x402",
+    "amount": 1.0,
+    "currency": "USDC",
+    "recipient": "https://api.premium-service.com/v1/data",
+    "status": "executed"
+  },
+  "txHash": "0xabc123...",
+  "x402Result": {
+    "data": { "premium": "content" },
+    "txHash": "0xabc123...",
+    "network": "base"
+  },
+  "policyResult": {
+    "allowed": true,
+    "violations": [],
+    "requiresHumanConfirmation": false
+  },
+  "confirmationRequired": false,
+  "dryRun": false
+}
+```
+
+**Via CLI:**
+```bash
+agent-payments pay \
+  --protocol x402 \
+  --amount 1.00 \
+  --currency USDC \
+  --to https://api.premium-service.com/v1/data \
+  --network base \
+  --gateway x402
+```
+
+### Example 11 — AP2 Remote Mandate Payment (Paying Another Service)
+
+This demonstrates the **client side** — your agent creates and submits a mandate to an
+AP2-compliant external payment processor.
+
+**Via Web API:**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "ap2",
+    "action": "pay",
+    "amount": "79.99",
+    "currency": "USD",
+    "recipient": "https://merchant.example.com/ap2/process-payment",
+    "gateway": "ap2",
+    "description": "Annual subscription via AP2",
+    "metadata": {
+      "payment_method_type": "card"
+    }
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "tx": {
+    "id": "a7890123-4567-ef01-2345-67890abcdef1",
+    "protocol": "ap2",
+    "gateway": "ap2",
+    "amount": 79.99,
+    "currency": "USD",
+    "status": "executed"
+  },
+  "ap2Result": {
+    "mandate_id": "mandate_1709712000_xyz",
+    "transaction_id": "ap2-tx-abc123",
+    "status": "success"
+  },
+  "policyResult": {
+    "allowed": true,
+    "violations": [],
+    "requiresHumanConfirmation": false
+  },
+  "confirmationRequired": false,
+  "dryRun": false
+}
+```
+
 ---
 
 ## Development
@@ -2703,6 +3680,11 @@ npm run dev          # ts-node src/index.ts
 | `Google Pay requires a 'paymentToken' in metadata` | Missing client-side token | Ensure the Google Pay JS API token is passed in `metadata.paymentToken` |
 | `Apple Pay requires a 'paymentToken' in metadata` | Missing client-side token | Ensure the Apple Pay JS API token is passed in `metadata.paymentToken` |
 | `Apple Pay merchant validation failed` | Invalid cert or domain | Verify domain is registered with Apple and `applepay_merchant_cert` is valid |
+| `x402 settlement failed: Facilitator rejected` | Invalid payment payload or facilitator unreachable | Check `facilitator_url` in config, verify the signed authorization fields (amount, payTo, time bounds) |
+| `AP2 mandate has expired` | Mandate `valid_until` is in the past | Create a new mandate with a future expiry |
+| `Mandate already executed (single-use)` | Attempting to reuse a single-use mandate | Create a new mandate for each payment |
+| `Invalid X-PAYMENT header` | Malformed Base64 or JSON in x402 payment header | Ensure the `X-PAYMENT` header is valid Base64-encoded JSON matching `X402PaymentPayload` |
+| `Unsupported payment method type: X` | AP2 payment method not implemented | Use one of: `stripe`, `paypal`, `card`, `crypto` |
 
 ### Debugging
 
