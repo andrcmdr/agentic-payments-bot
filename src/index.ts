@@ -486,7 +486,7 @@ async function executeAP2RemotePayment(
   const ap2 = new AP2Client();
 
   // Step 1: Create mandate
-  const agentId = config.skill.name;
+  const agentId = config.protocols.ap2.server.agent_id;
   const mandate = ap2.createMandate(intent, agentId);
 
   // Step 2: Request mandate signature from credential provider
