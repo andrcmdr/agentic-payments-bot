@@ -104,12 +104,13 @@
   - [Example 3 — AI Chat-Driven Payment](#example-3--ai-chat-driven-payment)
   - [Example 4 — Policy Violation & Human Confirmation](#example-4--policy-violation--human-confirmation)
   - [Example 5 — Key Management](#example-5--key-management)
-  - [Example 6 — Google Pay Payment via Web API](#example-6--google-pay-payment-via-web-api)
-  - [Example 7 — Apple Pay Payment via Web API](#example-7--apple-pay-payment-via-web-api)
-  - [Example 8 — x402 Paywall (External Agent Paying You)](#example-8--x402-paywall-external-agent-paying-you)
-  - [Example 9 — AP2 Mandate (External Agent Paying You)](#example-9--ap2-mandate-external-agent-paying-you)
-  - [Example 10 — x402 Remote Resource Payment (Paying Another Service)](#example-10--x402-remote-resource-payment-paying-another-service)
-  - [Example 11 — AP2 Remote Mandate Payment (Paying Another Service)](#example-11--ap2-remote-mandate-payment-paying-another-service)
+  - [Example 6 — Mastercard Send Payment](#example-6--mastercard-send-payment)
+  - [Example 7 — Google Pay Payment via Web API](#example-7--google-pay-payment-via-web-api)
+  - [Example 8 — Apple Pay Payment via Web API](#example-8--apple-pay-payment-via-web-api)
+  - [Example 9 — x402 Paywall (External Agent Paying You)](#example-9--x402-paywall-external-agent-paying-you)
+  - [Example 10 — AP2 Mandate (External Agent Paying You)](#example-10--ap2-mandate-external-agent-paying-you)
+  - [Example 11 — x402 Remote Resource Payment (Paying Another Service)](#example-11--x402-remote-resource-payment-paying-another-service)
+  - [Example 12 — AP2 Remote Mandate Payment (Paying Another Service)](#example-12--ap2-remote-mandate-payment-paying-another-service)
 - [Development](#development)
   - [Build](#build)
   - [Run Tests](#run-tests)
@@ -418,14 +419,30 @@ User/Agent input
 # Build and start both services
 DRY_RUN=true docker compose up --build -d
 
+# Start everything (first run auto-configures OpenClaw + installs skill)
+docker compose up -d
+
+# Or explicitly run skill installation first
+docker compose --profile setup run --rm install-skill
+docker compose up -d
+
 # Check the payment API health
 curl http://localhost:3402/api/v1/health
 
 # Run the demo via the CLI helper
 DRY_RUN=true docker compose run --rm cli demo
 
+# Run CLI commands
+docker compose run --rm --profile cli cli demo --stub-mode success
+
+# Quick dry-run test
+DRY_RUN=true docker compose up -d
+
+# Check logs
+docker compose logs -f openclaw-payments
+
 # View audit log
-DRY_RUN=true docker compose run --rm cli audit --limit 20
+DRY_RUN=true docker compose run --rm cli audit --limit 30
 
 # Store a key via CLI
 DRY_RUN=true docker compose run --rm cli keys list
@@ -1502,6 +1519,10 @@ policy engine, human-in-the-loop confirmation, audit trail, CLI, and web API —
 | **Wallet keys** | Viem `generatePrivateKey()` → encrypted via KMS | Viem `generatePrivateKey()` → encrypted via local AES → stored in SQLite |
 | **Web3 payments** | Real on-chain transactions via Viem | Stub: returns fake tx hash, simulated confirmation |
 | **Web2 payments** | Real API calls to Stripe / PayPal / Visa / MC / Google Pay / Apple Pay | Stub: returns fake transaction IDs, simulated status |
+| **x402 remote payments** | Real HTTP to x402 resource, on-chain settlement | Stub: returns fake tx hash and simulated resource data |
+| **AP2 remote payments** | Real HTTP to AP2 mandate issuer + credential provider | Stub: returns fake mandate ID and simulated payment result |
+| **x402 server (paywall)** | Verifies payment and settles via facilitator | Stub: returns simulated settlement success |
+| **AP2 server (mandates)** | Processes mandates against real payment backends | Stubs: routes to stubbed backends (Stripe/PayPal/Viem stubs) |
 | **Policy engine** | ✅ runs normally | ✅ runs normally |
 | **Human confirmation** | ✅ prompts on violations | ✅ prompts on violations |
 | **Audit trail** | ✅ writes to SQLite + Winston | ✅ writes to SQLite + Winston (tagged with `dryrun_*` actions) |
@@ -1646,6 +1667,17 @@ make the demo feel realistic.
 }
 ```
 
+**Mastercard Send stub — success:**
+```json
+{
+  "gateway": "mastercard",
+  "transaction_id": "MC-DRYRUN-1739184000000",
+  "status": "success",
+  "amount": "75.00",
+  "currency": "USD"
+}
+```
+
 **Google Pay stub — success:**
 ```json
 {
@@ -1669,10 +1701,34 @@ make the demo feel realistic.
 }
 ```
 
+**x402 remote resource stub — success:**
+```json
+{
+  "data": { "dryRun": true, "message": "Simulated x402 resource access" },
+  "txHash": "0x8f3a1b2c4d5e6f7a8b9c0d1e2f3a4b5caaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "network": "base"
+}
+```
+
+**AP2 remote mandate stub — success:**
+```json
+{
+  "mandate_id": "mandate_dryrun_1739184000000",
+  "status": "success",
+  "transaction_id": "ap2-dryrun-a1b2c3d4e5f6",
+  "receipt": {
+    "amount": "19.99",
+    "currency": "USD",
+    "timestamp": "2026-03-06T12:00:00.000Z",
+    "reference": "REF-DRYRUN-1739184000000"
+  }
+}
+```
+
 ### Demo Command
 
-The `demo` command runs 8 pre-built sample payments across all supported
-gateways and protocols:
+The `demo` command runs 11 pre-built sample payments across all supported
+gateways, protocol clients, and an over-limit policy scenario:
 
 ```bash
 openclaw-payment demo --stub-mode success
@@ -1684,34 +1740,43 @@ openclaw-payment demo --stub-mode success
    Stub mode: success
 ═══════════════════════════════════════════════════
 
-─── 1️⃣  x402 USDC payment on Base (web3) ───
+─── 1️⃣   x402 USDC payment on Base (web3) ───
   ✅ Success | TX: 0x8f3a1b2c...
 
-─── 2️⃣  AP2 Stripe payment (web2) ───
+─── 2️⃣   AP2 Stripe payment (web2) ───
   ✅ Success | ID: pi_dryrun_a1b2c3d4e5f6
 
-─── 3️⃣  AP2 PayPal payment (web2) ───
+─── 3️⃣   AP2 PayPal payment (web2) ───
   ✅ Success | ID: PAYPAL-DRYRUN-A1B2C3D4E5
 
-─── 4️⃣  x402 ETH transfer on Ethereum (web3) ───
+─── 4️⃣   x402 ETH transfer on Ethereum (web3) ───
   ✅ Success | TX: 0x9c4b2d3e...
 
-─── 5️⃣  AP2 Visa Direct payment (web2) ───
+─── 5️⃣   AP2 Visa Direct payment (web2) ───
   ✅ Success | ID: VISA-DRYRUN-1739184000000
 
-─── 6️⃣  AP2 Google Pay payment (web2) ───
+─── 6️⃣   AP2 Mastercard Send payment (web2) ───
+  ✅ Success | ID: MC-DRYRUN-1739184000000
+
+─── 7️⃣   AP2 Google Pay payment (web2) ───
   ✅ Success | ID: GPAY-DRYRUN-A1B2C3D4E5F6
 
-─── 7️⃣  AP2 Apple Pay payment (web2) ───
+─── 8️⃣   AP2 Apple Pay payment (web2) ───
   ✅ Success | ID: APAY-DRYRUN-A1B2C3D4E5F6
 
-─── 8️⃣  Over-limit payment (triggers policy engine) ───
+─── 9️⃣   x402 remote resource payment (x402 client) ───
+  ✅ Success | x402 TX: 0xabc123def456...
+
+─── 🔟  AP2 remote mandate payment (AP2 client) ───
+  ✅ Success | Mandate: mandate_dryrun_1739184000
+
+─── ⚠️   Over-limit payment (triggers policy engine) ───
   ❌ Not executed: Payment rejected by human confirmation.
   ⚠️  Policy: [single_transaction.max_amount_usd] Amount $99999.99 exceeds limit of $1000.00
 
 ══════════════════════════════════════════════════
   Demo complete. All transactions are in SQLite.
-  Run: openclaw-payment audit --limit 20
+  Run: openclaw-payment audit --limit 30
 ══════════════════════════════════════════════════
 ```
 
@@ -1770,6 +1835,8 @@ easily distinguishable from production entries:
 | `dryrun_mastercard` | Simulated Mastercard Send payment |
 | `dryrun_googlepay` | Simulated Google Pay payment |
 | `dryrun_applepay` | Simulated Apple Pay payment |
+| `dryrun_x402_remote` | Simulated x402 remote resource access (client) |
+| `dryrun_ap2_remote` | Simulated AP2 remote mandate submission (client) |
 | `dryrun_web2_executed` | Web2 payment stub completed |
 | `dryrun_web3_confirmed` | Web3 tx stub confirmed |
 
@@ -1779,8 +1846,8 @@ Run the entire skill with **zero AWS credentials and zero payment gateway accoun
 
 ```bash
 # 1. Clone and install
-git clone https://github.com/sentient-agi/openclaw-payment-skill.git
-cd openclaw-payment-skill
+git clone https://github.com/sentient-agi/agentic-payments-bot.git
+cd agentic-payments-bot
 npm install
 npm run build
 
@@ -1850,6 +1917,17 @@ protocols:
     default_asset: "USDC"          # Default token if not specified
     timeout_ms: 30000              # HTTP request timeout for x402 ops
 
+    # Server-side (paywall) configuration
+    # When enabled, the web API exposes x402-protected endpoints
+    # that external agents can pay to access.
+    server:
+      enabled: true                # Enable x402 server endpoints
+      pay_to_address: "0x..."      # Wallet address that receives x402 payments
+                                   # Override via X402_PAY_TO_ADDRESS env var
+      default_price: "1000000"     # Default price in asset base units
+                                   # (e.g. "1000000" = 1 USDC with 6 decimals)
+      default_description: "Access to premium agentic data feed"
+
   ap2:
     enabled: true                  # Enable/disable AP2 protocol
     mandate_issuer: "https://your-ap2-issuer.example.com"
@@ -1859,6 +1937,15 @@ protocols:
                                    # AP2 credential provider for mandate
                                    # signing and payment credential retrieval
     timeout_ms: 30000              # HTTP request timeout
+
+    # Server-side (mandate processor) configuration
+    # When enabled, the web API exposes AP2 mandate lifecycle endpoints
+    # for external agents to submit mandates and trigger payments.
+    server:
+      enabled: true                # Enable AP2 server endpoints
+      agent_id: "openclaw-payments-agent"
+                                   # Agent ID used when this service acts
+                                   # as an AP2 client
 
 # ── Web3 Networks ────────────────────────────────────────────────────
 # Each key is a network name used in PaymentIntent.network
@@ -2078,8 +2165,8 @@ cli:
 |---|---|---|
 | `skill` | Metadata | `name`, `version` — must match `SKILL.md` |
 | `database` | SQLite | `path`, `wal_mode`, `busy_timeout_ms` |
-| `protocols.x402` | x402 client | `facilitator_url`, `default_network`, `default_asset` |
-| `protocols.ap2` | AP2 client | `mandate_issuer`, `credential_provider_url` |
+| `protocols.x402` | x402 client + server | `facilitator_url`, `default_network`, `default_asset`, `server.enabled`, `server.pay_to_address`, `server.default_price` |
+| `protocols.ap2` | AP2 client + server | `mandate_issuer`, `credential_provider_url`, `server.enabled`, `server.agent_id` |
 | `web3.<network>` | EVM chains | `rpc_url`, `chain_id`, `enabled` |
 | `web2.<gateway>` | Payment APIs | Gateway-specific URLs, API versions |
 | `kms` | Key management | `provider`, `region`, `key_id_env`, `linux_keyring_backend`, `gpg_key_id`, `gpg_binary` |
@@ -2113,9 +2200,9 @@ agent-payments pay [options]
 | `--protocol <x402\|ap2>` | ✅ | Protocol to use |
 | `--amount <string>` | ✅ | Decimal amount (e.g., `"10.50"`) |
 | `--currency <string>` | ✅ | Currency code (`USDC`, `ETH`, `USD`, `EUR`) |
-| `--to <string>` | ✅ | Recipient address or merchant ID |
+| `--to <string>` | ✅ | Recipient address, merchant ID, or URL (for x402/AP2 remote payments) |
 | `--network <string>` | ❌ | Blockchain network (`ethereum`, `base`, `polygon`, `web2`) |
-| `--gateway <string>` | ❌ | Payment gateway (`viem`, `stripe`, `paypal`, `visa`, `mastercard`, `googlepay`, `applepay`) |
+| `--gateway <string>` | ❌ | Payment gateway (`viem`, `stripe`, `paypal`, `visa`, `mastercard`, `googlepay`, `applepay`, `x402`, `ap2`) |
 | `--description <string>` | ❌ | Human-readable description |
 | `--wallet <string>` | ❌ | Wallet key alias in encrypted store (default: `default_wallet`) |
 
@@ -2147,6 +2234,39 @@ agent-payments pay \
   --currency USD \
   --to seller@example.com \
   --gateway paypal
+
+# Visa Direct payment
+agent-payments pay \
+  --protocol ap2 \
+  --amount 100.00 \
+  --currency USD \
+  --to 4111111111111111 \
+  --gateway visa
+
+# Mastercard Send payment
+agent-payments pay \
+  --protocol ap2 \
+  --amount 75.00 \
+  --currency USD \
+  --to 5500000000000004 \
+  --gateway mastercard
+
+# x402 remote resource payment (pay for a URL)
+agent-payments pay \
+  --protocol x402 \
+  --amount 1.00 \
+  --currency USDC \
+  --to https://api.premium-service.com/v1/data \
+  --network base \
+  --gateway x402
+
+# AP2 remote mandate submission (pay via AP2 to a URL)
+agent-payments pay \
+  --protocol ap2 \
+  --amount 19.99 \
+  --currency USD \
+  --to https://merchant.example.com/ap2/process-payment \
+  --gateway ap2
 ```
 
 ### `parse` — Parse AI Output
@@ -3183,7 +3303,65 @@ agent-payments keys list
 agent-payments keys delete trading_wallet
 ```
 
-### Example 6 — Google Pay Payment via Web API
+### Example 6 — Mastercard Send Payment
+
+**Via CLI:**
+```bash
+agent-payments pay \
+  --protocol ap2 \
+  --amount 75.00 \
+  --currency USD \
+  --to 5500000000000004 \
+  --gateway mastercard \
+  --description "Freelancer payout via Mastercard Send"
+```
+
+**Via Web API:**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "ap2",
+    "action": "pay",
+    "amount": "75.00",
+    "currency": "USD",
+    "recipient": "5500000000000004",
+    "gateway": "mastercard",
+    "description": "Freelancer payout via Mastercard Send"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "tx": {
+    "id": "c3d4e5f6-7890-abcd-ef12-345678901234",
+    "protocol": "ap2",
+    "gateway": "mastercard",
+    "amount": 75.0,
+    "amount_usd": 75.0,
+    "currency": "USD",
+    "status": "executed"
+  },
+  "web2Result": {
+    "gateway": "mastercard",
+    "transaction_id": "MC-TXN-12345678",
+    "status": "success",
+    "amount": "75.00",
+    "currency": "USD"
+  },
+  "policyResult": {
+    "allowed": true,
+    "violations": [],
+    "requiresHumanConfirmation": false
+  },
+  "confirmationRequired": false,
+  "dryRun": false
+}
+```
+
+### Example 7 — Google Pay Payment via Web API
 
 ```bash
 curl -X POST http://localhost:3402/api/v1/payment \
@@ -3236,7 +3414,7 @@ curl -X POST http://localhost:3402/api/v1/payment \
 > obtained from the client-side [Google Pay JS API](https://developers.google.com/pay/api).
 > The server never generates this token — it only processes it.
 
-### Example 7 — Apple Pay Payment via Web API
+### Example 8 — Apple Pay Payment via Web API
 
 ```bash
 curl -X POST http://localhost:3402/api/v1/payment \
@@ -3291,7 +3469,7 @@ curl -X POST http://localhost:3402/api/v1/payment \
 > `validationURL` triggers server-to-server merchant session validation with Apple
 > before the token is processed.
 
-### Example 8 — x402 Paywall (External Agent Paying You)
+### Example 9 — x402 Paywall (External Agent Paying You)
 
 This demonstrates the **server side** — an external agent pays for access to a
 resource protected by the x402 paywall middleware.
@@ -3361,7 +3539,7 @@ curl http://localhost:3402/api/v1/x402/pricing
 }
 ```
 
-### Example 9 — AP2 Mandate (External Agent Paying You)
+### Example 10 — AP2 Mandate (External Agent Paying You)
 
 This demonstrates the **server side** — an external agent submits an AP2 mandate
 and the server processes the payment internally.
@@ -3496,7 +3674,7 @@ curl http://localhost:3402/api/v1/ap2/mandates/mandate_1709712000_demo
 }
 ```
 
-### Example 10 — x402 Remote Resource Payment (Paying Another Service)
+### Example 11 — x402 Remote Resource Payment (Paying Another Service)
 
 This demonstrates the **client side** — your agent pays for access to an x402-protected
 resource hosted by another service.
@@ -3557,7 +3735,7 @@ agent-payments pay \
   --gateway x402
 ```
 
-### Example 11 — AP2 Remote Mandate Payment (Paying Another Service)
+### Example 12 — AP2 Remote Mandate Payment (Paying Another Service)
 
 This demonstrates the **client side** — your agent creates and submits a mandate to an
 AP2-compliant external payment processor.
