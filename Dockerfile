@@ -2,12 +2,11 @@
 # Dockerfile — OpenClaw + Agentic Payment Skill (dual-service)
 #
 # Runs the OpenClaw gateway and the agent-payments-skill web API
-# side by side in a single container.
+# side by side in a single container, managed by tini.
 # ═══════════════════════════════════════════════════════════════════════════
 
 # ── Stage 1: Build the payment skill ─────────────────────────────────────
 FROM node:trixie AS builder
-# FROM node:22-bookworm-slim AS builder
 
 WORKDIR /build
 
@@ -18,11 +17,9 @@ RUN apt-get update && \
 
 # Copy package manifests first for layer caching
 COPY package.json tsconfig.json ./
-# COPY package.json package-lock.json tsconfig.json ./
 
 # Install all dependencies (including devDependencies for tsc)
 RUN npm install --verbose
-# RUN npm ci
 
 # Copy source and config
 COPY src/ src/
@@ -37,13 +34,13 @@ RUN npm prune --production
 
 # ── Stage 2: Production runtime ──────────────────────────────────────────
 FROM node:trixie AS runtime
-# FROM node:22-bookworm-slim AS runtime
 
 # Install runtime system dependencies
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
         curl \
         tini \
+        jq \
         python3 \
         make \
         g++ && \
@@ -66,14 +63,15 @@ COPY --from=builder /build/package.json ./
 COPY --from=builder /build/config/ ./config/
 COPY --from=builder /build/SKILL.md ./
 
-# Create runtime directories (data + logs)
+# Create runtime directories (data + logs + OpenClaw config & workspace)
 RUN mkdir -p /app/agent-payments-skill/data \
              /app/agent-payments-skill/logs \
              /home/openclaw/.openclaw/workspace \
-             /home/openclaw/.openclaw/skills
+             /home/openclaw/.openclaw/skills/agent-payments-skill
 
-# Symlink the skill into OpenClaw's skills directory
-RUN ln -s /app/agent-payments-skill /home/openclaw/.openclaw/skills/agent-payments-skill
+# Symlink the skill's SKILL.md into OpenClaw's skills directory
+RUN ln -sf /app/agent-payments-skill/SKILL.md \
+           /home/openclaw/.openclaw/skills/agent-payments-skill/SKILL.md
 
 # Fix ownership
 RUN chown -R openclaw:openclaw /app /home/openclaw
@@ -90,38 +88,119 @@ echo "  OpenClaw gateway : ${OPENCLAW_GATEWAY_PORT:-18789}"
 echo "  Dry-run mode     : ${DRY_RUN:-false}"
 echo "═══════════════════════════════════════════════════════════"
 
+OPENCLAW_HOME="/home/openclaw/.openclaw"
+OPENCLAW_CONFIG="${OPENCLAW_HOME}/openclaw.json"
+
+# ── First-run: generate OpenClaw configuration ────────────────────────
+if [ ! -f "$OPENCLAW_CONFIG" ]; then
+  echo "[openclaw] First run detected — generating configuration..."
+
+  # Resolve gateway token: use env var or generate one
+  GW_TOKEN="${OPENCLAW_GATEWAY_TOKEN:-$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")}"
+
+  cat > "$OPENCLAW_CONFIG" <<EOF
+{
+  "gateway": {
+    "mode": "local",
+    "port": ${OPENCLAW_GATEWAY_PORT:-18789},
+    "auth": {
+      "mode": "token",
+      "token": "${GW_TOKEN}"
+    }
+  },
+  "llm": {
+    "defaultProvider": "${LLM_PROVIDER:-anthropic}",
+    "providers": {
+      "${LLM_PROVIDER:-anthropic}": {
+        "apiKey": "${LLM_API_KEY:-}"
+      }
+    }
+  },
+  "agents": {
+    "defaults": {
+      "workspace": "${OPENCLAW_HOME}/workspace"
+    }
+  },
+  "tools": {
+    "allow": [
+      "read", "write", "edit", "apply_patch",
+      "exec", "process",
+      "web_search", "web_fetch"
+    ]
+  },
+  "browser": {
+    "enabled": false,
+    "headless": true,
+    "noSandbox": true
+  }
+}
+EOF
+
+  echo "[openclaw] Configuration written to ${OPENCLAW_CONFIG}"
+  echo "[openclaw] Gateway token: ${GW_TOKEN:0:8}..."
+fi
+
+# ── First-run: register payment skill via 'skills' npm package ────────
+SKILL_MARKER="${OPENCLAW_HOME}/.payment-skill-installed"
+if [ ! -f "$SKILL_MARKER" ]; then
+  echo "[skills] Registering payment skill with OpenClaw agent..."
+
+  # Use the 'skills' npm package to install the local skill into OpenClaw
+  cd /app/agent-payments-skill
+  npx -y skills add /app/agent-payments-skill \
+    --agent openclaw \
+    --yes 2>/dev/null || {
+      echo "[skills] npx skills add not available or failed, using manual symlink..."
+      # Fallback: ensure the symlink exists (already created in Dockerfile)
+      ln -sfn /app/agent-payments-skill \
+              "${OPENCLAW_HOME}/skills/agent-payments-skill"
+      echo "[skills] Symlinked skill into ${OPENCLAW_HOME}/skills/"
+    }
+
+  touch "$SKILL_MARKER"
+  echo "[skills] Payment skill registered ✅"
+fi
+
 # ── Start the payment skill web API in the background ──────────────────
 cd /app/agent-payments-skill
 
 if [ "${DRY_RUN:-false}" = "true" ]; then
   echo "[payment-skill] Starting in DRY-RUN mode..."
   export CONFIG_PATH="${CONFIG_PATH:-config/default.yaml}"
-  # The skill reads dry_run.enabled from YAML; we also support env override
 fi
 
-echo "[payment-skill] Launching web API..."
+echo "[payment-skill] Launching web API on port ${PAYMENT_API_PORT:-3402}..."
 node dist/web-api.js &
 PAYMENT_PID=$!
 
 # ── Start OpenClaw gateway ─────────────────────────────────────────────
-echo "[openclaw] Starting OpenClaw gateway..."
+echo "[openclaw] Starting OpenClaw gateway on port ${OPENCLAW_GATEWAY_PORT:-18789}..."
 cd /home/openclaw
 
-openclaw &
+openclaw gateway \
+  --port "${OPENCLAW_GATEWAY_PORT:-18789}" \
+  --allow-unconfigured &
 OPENCLAW_PID=$!
 
 # ── Trap signals and forward to both processes ─────────────────────────
+PIDS=("$PAYMENT_PID" "$OPENCLAW_PID")
+
 cleanup() {
   echo "[entrypoint] Shutting down..."
-  kill "$PAYMENT_PID" "$OPENCLAW_PID" 2>/dev/null || true
-  wait "$PAYMENT_PID" "$OPENCLAW_PID" 2>/dev/null || true
+  for pid in "${PIDS[@]}"; do
+    kill "$pid" 2>/dev/null || true
+  done
+  for pid in "${PIDS[@]}"; do
+    wait "$pid" 2>/dev/null || true
+  done
   echo "[entrypoint] All processes stopped."
   exit 0
 }
 trap cleanup SIGTERM SIGINT SIGQUIT
 
 # ── Wait for either process to exit ───────────────────────────────────
-wait -n "$PAYMENT_PID" "$OPENCLAW_PID"
+# If either process dies, bring everything down gracefully.
+wait -n "${PIDS[@]}"
 EXIT_CODE=$?
 
 echo "[entrypoint] A process exited with code $EXIT_CODE. Stopping all..."
