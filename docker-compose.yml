@@ -3,6 +3,31 @@
 # ═══════════════════════════════════════════════════════════════════════════
 
 services:
+  # ── First-run: register the payment skill (runs once, then exits) ────
+  install-skill:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: openclaw-install-skill
+    profiles: ["setup"]
+    environment:
+      - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
+      - LLM_API_KEY=${LLM_API_KEY:-}
+      - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-}
+    volumes:
+      - openclaw-config:/home/openclaw/.openclaw
+    entrypoint: ["bash", "-c"]
+    command:
+      - |
+        echo "Installing payment skill into OpenClaw via 'skills' package..."
+        cd /app/agent-payments-skill
+        npx -y skills add /app/agent-payments-skill \
+          --agent openclaw --yes 2>/dev/null || \
+          ln -sfn /app/agent-payments-skill \
+                  /home/openclaw/.openclaw/skills/agent-payments-skill
+        echo "✅ Payment skill installed."
+
+  # ── Main service: gateway + payment API ─────────────────────────────
   openclaw-payments:
     build:
       context: .
@@ -25,6 +50,7 @@ services:
 
       # ── OpenClaw ────────────────────────────────────────────────────
       - OPENCLAW_GATEWAY_TOKEN=${OPENCLAW_GATEWAY_TOKEN:-}
+      - OPENCLAW_GATEWAY_PORT=${OPENCLAW_GATEWAY_PORT:-18789}
       - LLM_PROVIDER=${LLM_PROVIDER:-anthropic}
       - LLM_API_KEY=${LLM_API_KEY:-}
 
@@ -32,6 +58,7 @@ services:
       - CONFIG_PATH=${CONFIG_PATH:-config/default.yaml}
       - DRY_RUN=${DRY_RUN:-false}
       - DRYRUN_ENCRYPTION_KEY=${DRYRUN_ENCRYPTION_KEY:-}
+      - PAYMENT_API_PORT=${PAYMENT_API_PORT:-3402}
 
     volumes:
       # Persist payment skill data (SQLite DB, logs)
@@ -43,11 +70,11 @@ services:
       # - ./config/production.yaml:/app/agent-payments-skill/config/default.yaml:ro
 
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:3402/api/v1/health"]
+      test: ["CMD", "bash", "-c", "curl -sf http://localhost:3402/api/v1/health && curl -sf http://localhost:18789/ || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 3
-      start_period: 15s
+      start_period: 20s
 
   # ── CLI helper container (for admin / one-off commands) ──────────────
   cli:
