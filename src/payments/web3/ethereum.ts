@@ -46,9 +46,17 @@ const USDT_ADDRESSES: Record<string, Address> = {
   polygon: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
 };
 
-const WELL_KNOWN_TOKENS: Record<string, Record<string, Address>> = {
-  USDC: USDC_ADDRESSES,
-  USDT: USDT_ADDRESSES,
+const DAI_ADDRESSES: Record<string, Address> = {
+  ethereum: "0x6B175474E89094C44Da98b954EedeAC495271d0F",
+  base: "0x50c5725949A6F0c72E6C4a641F24049A917DB0Cb",
+  polygon: "0x8f3Cf7ad23Cd3CaDbD9735AFf958023239c6A063",
+};
+
+/** Token symbol → { addresses, decimals } */
+const WELL_KNOWN_TOKENS: Record<string, { addresses: Record<string, Address>; decimals: number }> = {
+  USDC: { addresses: USDC_ADDRESSES, decimals: 6 },
+  USDT: { addresses: USDT_ADDRESSES, decimals: 6 },
+  DAI:  { addresses: DAI_ADDRESSES,  decimals: 18 },
 };
 
 // ─── Chain Resolver ─────────────────────────────────────────────────────────
@@ -156,7 +164,7 @@ export async function sendErc20(
   tokenSymbol: string = "USDC",
   networkName: string = "base",
   tokenAddress?: Address,
-  decimals: number = 6
+  decimals?: number
 ): Promise<EthereumTxResult> {
   const logger = getLogger();
   logger.info("web3: Preparing ERC-20 transfer", {
@@ -178,13 +186,14 @@ export async function sendErc20(
   const account = privateKeyToAccount(privateKey as `0x${string}`);
   const { chain, rpcUrl } = resolveChain(networkName);
 
-  const contractAddress =
-    tokenAddress ?? WELL_KNOWN_TOKENS[tokenSymbol.toUpperCase()]?.[networkName];
+  const tokenInfo = WELL_KNOWN_TOKENS[tokenSymbol.toUpperCase()];
+  const contractAddress = tokenAddress ?? tokenInfo?.addresses[networkName];
   if (!contractAddress) {
     throw new Error(
       `No known address for ${tokenSymbol} on ${networkName}. Provide tokenAddress.`
     );
   }
+  const resolvedDecimals = decimals ?? tokenInfo?.decimals ?? 6;
 
   const walletClient = createWalletClient({
     account,
@@ -195,7 +204,7 @@ export async function sendErc20(
   const data = encodeFunctionData({
     abi: ERC20_TRANSFER_ABI,
     functionName: "transfer",
-    args: [to, parseUnits(amount, decimals)],
+    args: [to, parseUnits(amount, resolvedDecimals)],
   });
 
   const txHash = await walletClient.sendTransaction({
