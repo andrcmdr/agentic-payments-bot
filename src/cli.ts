@@ -15,9 +15,9 @@ import { getDb } from "./db/sqlite";
 const program = new Command();
 
 program
-  .name("openclaw-payment")
-  .description("OpenClaw Agentic Payment Skill — CLI Interface")
-  .version("0.5.0")
+  .name("agentic-payments-bot")
+  .description("Agentic Payment Bot — CLI Interface")
+  .version("0.6.0")
   .option("-c, --config <path>", "Path to YAML config file", "config/default.yaml")
   .option("--dry-run", "Enable dry-run mode (no real payments, no AWS KMS)");
 
@@ -216,26 +216,13 @@ program
     (config as any).dry_run.stub_mode = opts.stubMode;
 
     console.log("\n🧪 ══════════════════════════════════════════════");
-    console.log("   AGENTIC PAYMENT SKILL — INTERACTIVE DEMO");
+    console.log("   AGENTIC PAYMENT BOT — INTERACTIVE DEMO");
     console.log("   Stub mode: " + opts.stubMode);
     console.log("══════════════════════════════════════════════════\n");
 
     const demos: Array<{ label: string; intent: PaymentIntent }> = [
       {
-        label: "1️⃣   x402 USDC payment on Base (web3)",
-        intent: PaymentIntentSchema.parse({
-          protocol: "x402",
-          action: "pay",
-          amount: "5.00",
-          currency: "USDC",
-          recipient: "0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65",
-          network: "base",
-          gateway: "viem",
-          description: "Demo: x402 USDC on Base",
-        }),
-      },
-      {
-        label: "2️⃣   AP2 Stripe payment (web2)",
+        label: "1️⃣   AP2 Stripe payment (web2)",
         intent: PaymentIntentSchema.parse({
           protocol: "ap2",
           action: "pay",
@@ -248,7 +235,7 @@ program
         }),
       },
       {
-        label: "3️⃣   AP2 PayPal payment (web2)",
+        label: "2️⃣   AP2 PayPal payment (web2)",
         intent: PaymentIntentSchema.parse({
           protocol: "ap2",
           action: "pay",
@@ -261,20 +248,7 @@ program
         }),
       },
       {
-        label: "4️⃣   x402 ETH transfer on Ethereum (web3)",
-        intent: PaymentIntentSchema.parse({
-          protocol: "x402",
-          action: "pay",
-          amount: "0.01",
-          currency: "ETH",
-          recipient: "0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
-          network: "ethereum",
-          gateway: "viem",
-          description: "Demo: x402 ETH transfer",
-        }),
-      },
-      {
-        label: "5️⃣   AP2 Visa Direct payment (web2)",
+        label: "3️⃣   AP2 Visa Direct payment (web2)",
         intent: PaymentIntentSchema.parse({
           protocol: "ap2",
           action: "pay",
@@ -287,20 +261,20 @@ program
         }),
       },
       {
-        label: "6️⃣   AP2 Mastercard Send payment (web2)",
+        label: "4️⃣   AP2 Mastercard Send payment (web2)",
         intent: PaymentIntentSchema.parse({
           protocol: "ap2",
           action: "pay",
           amount: "75.00",
           currency: "USD",
-          recipient: "5500000000000004",
+          recipient: "5111111111111118",
           network: "web2",
           gateway: "mastercard",
           description: "Demo: AP2 Mastercard Send",
         }),
       },
       {
-        label: "7️⃣   AP2 Google Pay payment (web2)",
+        label: "5️⃣   AP2 Google Pay payment (web2)",
         intent: PaymentIntentSchema.parse({
           protocol: "ap2",
           action: "pay",
@@ -314,7 +288,7 @@ program
         }),
       },
       {
-        label: "8️⃣   AP2 Apple Pay payment (web2)",
+        label: "6️⃣   AP2 Apple Pay payment (web2)",
         intent: PaymentIntentSchema.parse({
           protocol: "ap2",
           action: "pay",
@@ -328,33 +302,98 @@ program
         }),
       },
       {
-        label: "9️⃣   x402 remote resource payment (x402 client)",
+        label: "7️⃣   x402 ETH transfer on Ethereum (web3)",
+        intent: PaymentIntentSchema.parse({
+          protocol: "x402",
+          action: "pay",
+          amount: "0.01",
+          currency: "ETH",
+          recipient: "0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
+          network: "ethereum",
+          gateway: "viem",
+          description: "Demo: x402 ETH transfer",
+        }),
+      },
+      {
+        label: "8️⃣   x402 USDT payment on Ethereum (web3)",
+        intent: PaymentIntentSchema.parse({
+          protocol: "x402",
+          action: "pay",
+          amount: "50.00",
+          currency: "USDT",
+          recipient: "0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
+          network: "ethereum",
+          gateway: "viem",
+          description: "Demo: x402 USDT on Ethereum",
+        }),
+      },
+      {
+        label: "9️⃣   x402 USDT payment on Base (web3)",
+        intent: PaymentIntentSchema.parse({
+          protocol: "x402",
+          action: "pay",
+          amount: "25.00",
+          currency: "USDT",
+          recipient: "0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65",
+          network: "base",
+          gateway: "viem",
+          description: "Demo: x402 USDT on Base",
+        }),
+      },
+      {
+        label: "🔟   x402 USDC payment on Ethereum (web3)",
+        intent: PaymentIntentSchema.parse({
+          protocol: "x402",
+          action: "pay",
+          amount: "10.00",
+          currency: "USDC",
+          recipient: "0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
+          network: "ethereum",
+          gateway: "viem",
+          description: "Demo: x402 USDC on Ethereum",
+        }),
+      },
+      {
+        label: "1️⃣1️⃣   x402 USDC payment on Base (web3)",
+        intent: PaymentIntentSchema.parse({
+          protocol: "x402",
+          action: "pay",
+          amount: "5.00",
+          currency: "USDC",
+          recipient: "0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65",
+          network: "base",
+          gateway: "viem",
+          description: "Demo: x402 USDC on Base",
+        }),
+      },
+      {
+        label: "1️⃣2️⃣   x402 remote resource payment (X402 protocol client)",
         intent: PaymentIntentSchema.parse({
           protocol: "x402",
           action: "pay",
           amount: "1.00",
           currency: "USDC",
-          recipient: "https://api.premium-service.example.com/v1/data",
+          recipient: "https://api.example.com/premium/data",
           network: "base",
           gateway: "x402",
-          description: "Demo: x402 remote resource access",
+          description: "Demo: x402 remote resource payment",
         }),
       },
       {
-        label: "🔟  AP2 remote mandate payment (AP2 client)",
+        label: "1️⃣3️⃣   AP2 remote mandate payment (AP2 protocol client)",
         intent: PaymentIntentSchema.parse({
           protocol: "ap2",
           action: "pay",
-          amount: "19.99",
+          amount: "29.99",
           currency: "USD",
           recipient: "https://merchant.example.com/ap2/process-payment",
           gateway: "ap2",
-          description: "Demo: AP2 remote mandate submission",
-          metadata: { payment_method_type: "card" },
+          description: "Demo: AP2 remote mandate payment",
+          metadata: { payment_method_type: "stripe" },
         }),
       },
       {
-        label: "⚠️   Over-limit payment (triggers policy engine)",
+        label: "⚠️1️⃣4️⃣   Over-limit payment (triggers policy engine)",
         intent: PaymentIntentSchema.parse({
           protocol: "ap2",
           action: "pay",
