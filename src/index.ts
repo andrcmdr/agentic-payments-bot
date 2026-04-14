@@ -68,7 +68,7 @@ export function bootstrap(configPath?: string, dryRunOverride?: boolean) {
     });
   }
 
-  logger.info("OpenClaw Payment Skill bootstrapped", {
+  logger.info("Agentic Payments Skill bootstrapped", {
     version: config.skill.version,
     dryRun: config.dry_run.enabled,
   });
