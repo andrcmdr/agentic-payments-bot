@@ -1,9 +1,9 @@
-# Agent Payments Skill Configuration
+# Agentic Payments Skill Configuration
 
 # Skill Metadata
 skill:
   name: agentic-payments-bot
-  version: 0.5.0
+  version: 0.6.0
 
 # ── Dry Run Mode ────────────────────────────────────────────────────
 # When enabled, no real payments are made. Gateways return stub responses,
@@ -194,7 +194,10 @@ policy:
     # Currency restrictions
     allowed_currencies:
       - "USDC"
+      - "USDT"
       - "ETH"
+      - "WETH"
+      - "DAI"
       - "USD"
       - "EUR"
 
