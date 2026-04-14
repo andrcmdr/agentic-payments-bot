@@ -210,71 +210,71 @@ export async function executePayment(
 
   // ── Step 6: Execute payment ───────────────────────────────────────────
   try {
-    switch (route.paymentType) {
-      case "web3": {
-        const result = await executeWeb3Payment(intent, route, walletKeyAlias, tx);
-        return {
-          success: true,
-          tx,
-          txHash: result.txHash,
-          policyResult,
-          confirmationRequired: policyResult.requiresHumanConfirmation,
-          dryRun,
-        };
-      }
-      case "web2": {
-        const result = await executeWeb2Payment(route.gateway, intent);
-        updateTransactionStatus(tx.id, "executed", {
-          tx_hash: result.transaction_id,
-        });
-        auditLog("info", "payment", dryRun ? "dryrun_web2_executed" : "web2_payment_executed", {
-          tx_id: tx.id,
-          gateway: route.gateway,
-          transaction_id: result.transaction_id,
-        });
-        return {
-          success: result.status === "success" || result.status === "pending",
-          tx,
-          web2Result: result,
-          policyResult,
-          confirmationRequired: policyResult.requiresHumanConfirmation,
-          dryRun,
-        };
-      }
-      case "x402": {
-        const result = await executeX402RemotePayment(intent, walletKeyAlias, tx);
-        return {
-          success: true,
-          tx,
-          txHash: result.txHash,
-          x402Result: {
-            data: result.data,
-            txHash: result.txHash,
-            network: result.network,
-          },
-          policyResult,
-          confirmationRequired: policyResult.requiresHumanConfirmation,
-          dryRun,
-        };
-      }
-      case "ap2": {
-        const result = await executeAP2RemotePayment(intent, tx);
-        return {
-          success: result.status === "success" || result.status === "pending",
-          tx,
-          ap2Result: {
-            mandate_id: result.mandate_id,
-            transaction_id: result.transaction_id,
-            status: result.status,
-          },
-          policyResult,
-          confirmationRequired: policyResult.requiresHumanConfirmation,
-          dryRun,
-        };
-      }
-      default: {
-        throw new Error(`Unknown payment type: ${route.paymentType}`);
-      }
+    if (route.paymentType === "web3") {
+      const result = await executeWeb3Payment(intent, route, walletKeyAlias, tx);
+      return {
+        success: true,
+        tx,
+        txHash: result.txHash,
+        policyResult,
+        confirmationRequired: policyResult.requiresHumanConfirmation,
+        dryRun,
+      };
+    } else if (route.paymentType === "x402") {
+      const x402Client = new X402Client();
+      const result = await x402Client.payForResource(intent, walletKeyAlias);
+      updateTransactionStatus(tx.id, "executed", {
+        tx_hash: result.txHash ?? result.network,
+      });
+      auditLog("info", "payment", dryRun ? "dryrun_x402_executed" : "x402_payment_executed", {
+        tx_id: tx.id,
+        resource: intent.recipient,
+      });
+      return {
+        success: result.success,
+        tx,
+        txHash: result.txHash,
+        policyResult,
+        confirmationRequired: policyResult.requiresHumanConfirmation,
+        error: result.error,
+        dryRun,
+      };
+    } else if (route.paymentType === "ap2") {
+      const ap2Client = new AP2Client();
+      const result = await ap2Client.submitMandate(intent, walletKeyAlias);
+      updateTransactionStatus(tx.id, "executed", {
+        tx_hash: result.transaction_id,
+      });
+      auditLog("info", "payment", dryRun ? "dryrun_ap2_executed" : "ap2_payment_executed", {
+        tx_id: tx.id,
+        mandate_id: result.mandate_id,
+      });
+      return {
+        success: result.status === "success",
+        tx,
+        policyResult,
+        confirmationRequired: policyResult.requiresHumanConfirmation,
+        error: result.error,
+        dryRun,
+      };
+    } else {
+      const result = await executeWeb2Payment(route.gateway, intent);
+      updateTransactionStatus(tx.id, "executed", {
+        tx_hash: result.transaction_id,
+      });
+      auditLog("info", "payment", dryRun ? "dryrun_web2_executed" : "web2_payment_executed", {
+        tx_id: tx.id,
+        gateway: route.gateway,
+        transaction_id: result.transaction_id,
+      });
+      return {
+        success: result.status === "success" || result.status === "pending",
+        tx,
+        web2Result: result,
+        policyResult,
+        confirmationRequired: policyResult.requiresHumanConfirmation,
+        dryRun,
+      };
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -546,9 +546,9 @@ function estimateUsdAmount(amount: number, currency: string): number {
     USDC: 1,
     USDT: 1,
     DAI: 1,
-    EUR: 1.15, // placeholder, use `xe.com` for exchange rate requests
-    ETH: 3200, // placeholder
-    WETH: 3200, // placeholder
+    EUR: 1.15,  // placeholder, use `xe.com` for exchange rate requests
+    ETH: 2400,  // placeholder
+    WETH: 2400, // placeholder
   };
   const rate = rates[currency.toUpperCase()] ?? 1;
   return amount * rate;
