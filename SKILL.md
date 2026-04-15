@@ -72,10 +72,10 @@ from your message automatically):
   "protocol": "x402 | ap2",
   "action": "pay",
   "amount": "<decimal string, e.g. 10.50>",
-  "currency": "USDC | ETH | USD | EUR",
+  "currency": "USDC | USDT | ETH | WETH | DAI | USD | EUR",
   "recipient": "<blockchain address or merchant ID>",
   "network": "ethereum | base | polygon | web2 | null",
-  "gateway": "viem | visa | mastercard | paypal | stripe | googlepay | applepay | null",
+  "gateway": "viem | visa | mastercard | paypal | stripe | googlepay | applepay | x402 | ap2 | null",
   "description": "<human-readable description>",
   "metadata": {}
 }
@@ -168,7 +168,7 @@ To check a transaction after execution, output:
 To query the audit log, output:
 
 ```json
-{"action": "audit", "category": "payment | policy | kms", "limit": 20}
+{"action": "audit", "category": "payment | policy | kms", "limit": 30}
 ```
 
 ## CLI Usage
@@ -181,7 +181,7 @@ The skill also provides a CLI. Key commands:
 - `agentic-payments-bot keys store --alias default_wallet --type web3_private_key --value "0x..."`
 - `agentic-payments-bot keys list`
 - `agentic-payments-bot tx <txId>`
-- `agentic-payments-bot audit --category payment --limit 20`
+- `agentic-payments-bot audit --category payment --limit 30`
 
 ## Web API
 
