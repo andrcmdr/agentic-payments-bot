@@ -1,7 +1,7 @@
 # ═══════════════════════════════════════════════════════════════════════════
 # Dockerfile — OpenClaw + Agentic Payment Skill (dual-service)
 #
-# Runs the OpenClaw gateway and the agent-payments-skill web API
+# Runs the OpenClaw gateway and the agentic-payments-bot web API
 # side by side in a single container, managed by tini.
 # ═══════════════════════════════════════════════════════════════════════════
 
@@ -54,7 +54,7 @@ RUN groupadd --gid 1001 openclaw && \
 RUN npm install -g openclaw@latest
 
 # ── Set up the payment skill ────────────────────────────────────────────
-WORKDIR /app/agent-payments-skill
+WORKDIR /app/agentic-payments-bot
 
 # Copy compiled output and production node_modules from builder
 COPY --from=builder /build/dist/ ./dist/
@@ -64,14 +64,14 @@ COPY --from=builder /build/config/ ./config/
 COPY --from=builder /build/SKILL.md ./
 
 # Create runtime directories (data + logs + OpenClaw config & workspace)
-RUN mkdir -p /app/agent-payments-skill/data \
-             /app/agent-payments-skill/logs \
+RUN mkdir -p /app/agentic-payments-bot/data \
+             /app/agentic-payments-bot/logs \
              /home/openclaw/.openclaw/workspace \
-             /home/openclaw/.openclaw/skills/agent-payments-skill
+             /home/openclaw/.openclaw/skills/agentic-payments-bot
 
 # Symlink the skill's SKILL.md into OpenClaw's skills directory
-RUN ln -sf /app/agent-payments-skill/SKILL.md \
-           /home/openclaw/.openclaw/skills/agent-payments-skill/SKILL.md
+RUN ln -sf /app/agentic-payments-bot/SKILL.md \
+           /home/openclaw/.openclaw/skills/agentic-payments-bot/SKILL.md
 
 # Fix ownership
 RUN chown -R openclaw:openclaw /app /home/openclaw
@@ -146,14 +146,14 @@ if [ ! -f "$SKILL_MARKER" ]; then
   echo "[skills] Registering payment skill with OpenClaw agent..."
 
   # Use the 'skills' npm package to install the local skill into OpenClaw
-  cd /app/agent-payments-skill
-  npx -y skills add /app/agent-payments-skill \
+  cd /app/agentic-payments-bot
+  npx -y skills add /app/agentic-payments-bot \
     --agent openclaw \
     --yes 2>/dev/null || {
       echo "[skills] npx skills add not available or failed, using manual symlink..."
       # Fallback: ensure the symlink exists (already created in Dockerfile)
-      ln -sfn /app/agent-payments-skill \
-              "${OPENCLAW_HOME}/skills/agent-payments-skill"
+      ln -sfn /app/agentic-payments-bot \
+              "${OPENCLAW_HOME}/skills/agentic-payments-bot"
       echo "[skills] Symlinked skill into ${OPENCLAW_HOME}/skills/"
     }
 
@@ -162,7 +162,7 @@ if [ ! -f "$SKILL_MARKER" ]; then
 fi
 
 # ── Start the payment skill web API in the background ──────────────────
-cd /app/agent-payments-skill
+cd /app/agentic-payments-bot
 
 if [ "${DRY_RUN:-false}" = "true" ]; then
   echo "[payment-skill] Starting in DRY-RUN mode..."
@@ -216,8 +216,8 @@ RUN chmod +x /usr/local/bin/entrypoint.sh
 EXPOSE 3402 18789 18790
 
 # ── Volumes ──────────────────────────────────────────────────────────────
-VOLUME ["/app/agent-payments-skill/data", \
-        "/app/agent-payments-skill/logs", \
+VOLUME ["/app/agentic-payments-bot/data", \
+        "/app/agentic-payments-bot/logs", \
         "/home/openclaw/.openclaw"]
 
 # ── Runtime config ───────────────────────────────────────────────────────
