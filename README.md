@@ -99,18 +99,24 @@
   - [Protocol Detection Heuristics](#protocol-detection-heuristics)
   - [Chat Confirmation Flow](#chat-confirmation-flow)
 - [Usage Examples](#usage-examples)
-  - [Example 1 — x402 USDC Payment via CLI](#example-1--x402-usdc-payment-via-cli)
-  - [Example 2 — AP2 Stripe Payment via Web API](#example-2--ap2-stripe-payment-via-web-api)
-  - [Example 3 — AI Chat-Driven Payment](#example-3--ai-chat-driven-payment)
-  - [Example 4 — Policy Violation & Human Confirmation](#example-4--policy-violation--human-confirmation)
-  - [Example 5 — Key Management](#example-5--key-management)
-  - [Example 6 — Mastercard Send Payment](#example-6--mastercard-send-payment)
-  - [Example 7 — Google Pay Payment via Web API](#example-7--google-pay-payment-via-web-api)
-  - [Example 8 — Apple Pay Payment via Web API](#example-8--apple-pay-payment-via-web-api)
-  - [Example 9 — x402 Paywall (External Agent Paying You)](#example-9--x402-paywall-external-agent-paying-you)
-  - [Example 10 — AP2 Mandate (External Agent Paying You)](#example-10--ap2-mandate-external-agent-paying-you)
-  - [Example 11 — x402 Remote Resource Payment (Paying Another Service)](#example-11--x402-remote-resource-payment-paying-another-service)
-  - [Example 12 — AP2 Remote Mandate Payment (Paying Another Service)](#example-12--ap2-remote-mandate-payment-paying-another-service)
+  - [Example 1 — USDC Payment on Base (Web3)](#example-1--usdc-payment-on-base-web3)
+  - [Example 2 — USDC Payment on Ethereum (Web3)](#example-2--usdc-payment-on-ethereum-web3)
+  - [Example 3 — USDT Payment on Base (Web3)](#example-3--usdt-payment-on-base-web3)
+  - [Example 4 — USDT Payment on Ethereum (Web3)](#example-4--usdt-payment-on-ethereum-web3)
+  - [Example 5 — ETH Transfer on Ethereum (Web3)](#example-5--eth-transfer-on-ethereum-web3)
+  - [Example 6 — Stripe Payment (Web2)](#example-6--stripe-payment-web2)
+  - [Example 7 — PayPal Payment (Web2)](#example-7--paypal-payment-web2)
+  - [Example 8 — Visa Direct Payment (Web2)](#example-8--visa-direct-payment-web2)
+  - [Example 9 — Mastercard Send Payment (Web2)](#example-9--mastercard-send-payment-web2)
+  - [Example 10 — Google Pay Payment (Web2)](#example-10--google-pay-payment-web2)
+  - [Example 11 — Apple Pay Payment (Web2)](#example-11--apple-pay-payment-web2)
+  - [Example 12 — x402 Remote Resource Payment (Paying Another Service)](#example-12--x402-remote-resource-payment-paying-another-service)
+  - [Example 13 — AP2 Remote Mandate Payment (Paying Another Service)](#example-13--ap2-remote-mandate-payment-paying-another-service)
+  - [Example 14 — AI Chat-Driven Payment](#example-14--ai-chat-driven-payment)
+  - [Example 15 — Policy Violation & Human Confirmation](#example-15--policy-violation--human-confirmation)
+  - [Example 16 — Key Management](#example-16--key-management)
+  - [Example 17 — x402 Paywall (External Agent Paying You)](#example-17--x402-paywall-external-agent-paying-you)
+  - [Example 18 — AP2 Mandate (External Agent Paying You)](#example-18--ap2-mandate-external-agent-paying-you)
 - [Development](#development)
   - [Build](#build)
   - [Run Tests](#run-tests)
@@ -122,9 +128,9 @@
 
 ## Overview
 
-**agent-payments-skill** is an Open Agent Skills Ecosystem compliant skill that enables AI agents to autonomously
-initiate, validate, and execute payments across both blockchain (web3) and traditional (web2)
-payment rails.
+**agentic-payments-bot** is a payment serivce/gateway/bot/agent/assistant with support for and providing of X402 and AP2 server and client, and providing
+an Open Agent Skills Ecosystem compliant skill, that enables AI agents to autonomously initiate, validate, and execute payments
+across both blockchain (web3) and traditional (web2) payment rails.
 
 ### Key Capabilities
 
@@ -139,7 +145,7 @@ payment rails.
 | **Policy engine** | Per-tx limits, daily/weekly/monthly aggregates, time-of-day, blacklist/whitelist, currency restrictions |
 | **Human-in-the-loop** | Automatic escalation on policy violations via CLI prompt, chat prompt, or web API |
 | **Audit trail** | Every action logged to SQLite `audit_log` table + Winston (stdout/stderr/file) |
-| **Three interfaces** | OpenClaw (or other agent) chat, CLI (`agent-payments`), REST web API |
+| **Three interfaces** | OpenClaw (or other agent) chat, CLI (`agentic-payments-bot`), REST web API |
 | **Fully configurable** | Single YAML file controls all behavior |
 
 ---
@@ -214,7 +220,7 @@ payment rails.
 ### Directory Structure
 
 ```
-agent-payments-skill/
+agentic-payments-bot/
 ├── SKILL.md                          # Open Agent Skills Ecosystem compliant skill definition (YAML frontmatter + markdown)
 ├── package.json                      # npm package manifest
 ├── tsconfig.json                     # TypeScript compiler config
@@ -439,7 +445,7 @@ docker compose run --rm --profile cli cli demo --stub-mode success
 DRY_RUN=true docker compose up -d
 
 # Check logs
-docker compose logs -f openclaw-payments
+docker compose logs -f agentic-payments-bot
 
 # View audit log
 DRY_RUN=true docker compose run --rm cli audit --limit 30
@@ -465,7 +471,7 @@ EOF
 docker compose up --build -d
 
 # Tail logs
-docker compose logs -f openclaw-payments
+docker compose logs -f agentic-payments-bot
 
 # Stop
 docker compose down
@@ -475,7 +481,7 @@ docker compose down
 
 ```bash
 # Run the OpenClaw CLI inside the running container
-docker compose exec openclaw-payments openclaw pairing approve telegram
+docker compose exec agentic-payments-bot openclaw pairing approve telegram
 ```
 
 ---
@@ -484,10 +490,10 @@ docker compose exec openclaw-payments openclaw pairing approve telegram
 
 | Container | Service | Port | Description |
 |---|---|---|---|
-| `openclaw-payments` | Payment Skill Web API | `3402` | REST API for payments, parsing, confirmations, audit |
-| `openclaw-payments` | OpenClaw Gateway | `18789` | Agent gateway (Telegram, Slack, WhatsApp, etc.) |
-| `openclaw-payments` | OpenClaw Bridge | `18790` | Internal bridge for multi-channel routing |
-| `openclaw-payments-cli` | CLI (on-demand) | — | Runs `openclaw-payment` CLI commands against the shared SQLite DB |
+| `agentic-payments-bot` | Payment Bot Web API (`npm run web`) | `3402` | REST API for payments, parsing, confirmations, audit |
+| `agentic-payments-bot` | OpenClaw Gateway (`openclaw gateway`) | `18789` | Agent gateway (Telegram, Slack, WhatsApp, etc.) |
+| `agentic-payments-bot` | OpenClaw Bridge (`openclaw`) | `18790` | Internal bridge for multi-channel routing |
+| `agentic-payments-bot` | CLI (on-demand) (`npm run cli`) | — | Runs `agentic-payments-bot` CLI commands against the shared SQLite DB |
 
 Both services share the same SQLite database and encrypted key store through Docker volumes [[1]](https://til.simonwillison.net/llms/openclaw-docker). The payment skill is auto-registered as an OpenClaw skill via the symlink into `~/.openclaw/skills/` [[2]](https://docs.openclaw.ai/tools/skills), so the agent discovers it at startup through the standard skill loading mechanism.
 
@@ -1010,7 +1016,7 @@ handles the prompt.
 kms:
   enabled: true
   provider: "gpg"
-  gpg_key_id: "agent-payments@yourcompany.com"   # fingerprint or email
+  gpg_key_id: "agentic-payments-bot@yourcompany.com"   # fingerprint or email
   gpg_binary: "gpg2"                             # path to gpg binary
 ```
 
@@ -1023,14 +1029,14 @@ Key-Length: 4096
 Subkey-Type: RSA
 Subkey-Length: 4096
 Name-Real: Agent Payments
-Name-Email: agent-payments@yourcompany.com
+Name-Email: agentic-payments-bot@yourcompany.com
 Expire-Date: 2y
 %no-protection
 %commit
 EOF
 
 # Verify it was created
-gpg2 --list-keys agent-payments@yourcompany.com
+gpg2 --list-keys agentic-payments-bot@yourcompany.com
 ```
 
 **For Docker / CI:** Import the key at container startup:
@@ -1082,7 +1088,7 @@ kms:
 kms:
   enabled: true
   provider: "gpg"
-  gpg_key_id: "agent-payments@yourcompany.com"
+  gpg_key_id: "agentic-payments-bot@yourcompany.com"
   gpg_binary: "gpg2"
 ```
 
@@ -1196,7 +1202,7 @@ For providers that store ciphertext (AWS KMS, GnuPG, Local AES), the
 | `AWS_ACCESS_KEY_ID` | ✅ (for `aws-kms`) | `aws-kms` | AWS IAM access key for KMS |
 | `AWS_SECRET_ACCESS_KEY` | ✅ (for `aws-kms`) | `aws-kms` | AWS IAM secret key for KMS |
 | `AWS_SESSION_TOKEN` | ❌ | `aws-kms` | Optional, for temporary credentials / STS |
-| `AWS_KMS_KEY_ID` | ✅ (for `aws-kms`) | `aws-kms` | KMS key ARN or alias (e.g., `alias/agent-payments`) |
+| `AWS_KMS_KEY_ID` | ✅ (for `aws-kms`) | `aws-kms` | KMS key ARN or alias (e.g., `alias/agentic-payments-bot`) |
 | `AWS_REGION` | ❌ | `aws-kms` | Overrides `kms.region` in config |
 | `DRYRUN_ENCRYPTION_KEY` | ❌ | `local-aes` | 256-bit hex key (64 chars). Auto-generated if missing. |
 | `CONFIG_PATH` | ❌ | All | Override default config file path (for web API) |
@@ -1435,8 +1441,8 @@ CREATE TABLE audit_log (
 
 ```bash
 # 1. Clone / copy the skill directory
-git clone https://github.com/sentient-agi/agent-payments-skill.git
-cd agent-payments-skill
+git clone https://github.com/sentient-agi/agentic-payments-bot.git
+cd agentic-payments-bot
 
 # 2. Install dependencies
 npm install
@@ -1467,25 +1473,25 @@ cp config/default.yaml config/production.yaml
 # Edit config/production.yaml with your RPC URLs, gateway settings, policy rules
 
 # 7. Store encrypted keys (first-time setup)
-npx agent-payments keys store --alias default_wallet --type web3_private_key --value "0xYOUR_PRIVATE_KEY"
+npx agentic-payments-bot keys store --alias default_wallet --type web3_private_key --value "0xYOUR_PRIVATE_KEY"
 
-npx agent-payments keys store --alias stripe_api_key --type stripe_token --value "sk_live_YOUR_STRIPE_KEY"
+npx agentic-payments-bot keys store --alias stripe_api_key --type stripe_token --value "sk_live_YOUR_STRIPE_KEY"
 
-npx agent-payments keys store --alias paypal_client_id --type paypal_token --value "YOUR_PAYPAL_CLIENT_ID"
-npx agent-payments keys store --alias paypal_secret --type paypal_token --value "YOUR_PAYPAL_SECRET"
+npx agentic-payments-bot keys store --alias paypal_client_id --type paypal_token --value "YOUR_PAYPAL_CLIENT_ID"
+npx agentic-payments-bot keys store --alias paypal_secret --type paypal_token --value "YOUR_PAYPAL_SECRET"
 
 # Google Pay credentials
-npx agent-payments keys store --alias googlepay_merchant_id --type googlepay_token --value "YOUR_GOOGLE_MERCHANT_ID"
-npx agent-payments keys store --alias googlepay_merchant_key --type googlepay_token --value "YOUR_GOOGLE_MERCHANT_KEY"
+npx agentic-payments-bot keys store --alias googlepay_merchant_id --type googlepay_token --value "YOUR_GOOGLE_MERCHANT_ID"
+npx agentic-payments-bot keys store --alias googlepay_merchant_key --type googlepay_token --value "YOUR_GOOGLE_MERCHANT_KEY"
 
 # Apple Pay credentials
-npx agent-payments keys store --alias applepay_merchant_id --type applepay_token --value "merchant.com.yourapp"
-npx agent-payments keys store --alias applepay_merchant_cert --type applepay_token --value "BASE64_ENCODED_CERT"
-npx agent-payments keys store --alias applepay_merchant_key --type applepay_token --value "BASE64_ENCODED_KEY"
-npx agent-payments keys store --alias applepay_processor_key --type applepay_token --value "YOUR_PROCESSOR_API_KEY"
+npx agentic-payments-bot keys store --alias applepay_merchant_id --type applepay_token --value "merchant.com.yourapp"
+npx agentic-payments-bot keys store --alias applepay_merchant_cert --type applepay_token --value "BASE64_ENCODED_CERT"
+npx agentic-payments-bot keys store --alias applepay_merchant_key --type applepay_token --value "BASE64_ENCODED_KEY"
+npx agentic-payments-bot keys store --alias applepay_processor_key --type applepay_token --value "YOUR_PROCESSOR_API_KEY"
 
 # 8. Register open agents skill
-npx skills add ./agent-payments-skill
+npx skills add ./agentic-payments-bot
 ```
 
 ### OpenClaw Activation
@@ -1495,7 +1501,7 @@ Once installed, activate in your OpenClaw configuration:
 ```json
 {
   "skills": {
-    "allow": ["agent-payments"]
+    "allow": ["agentic-payments-bot"]
   }
 }
 ```
@@ -1542,10 +1548,10 @@ policy engine, human-in-the-loop confirmation, audit trail, CLI, and web API —
 
 6. **Policy engine runs normally** — even in dry-run, all policy checks and human confirmation flows work identically. This lets you demo the full compliance flow.
 
-7. **Demo command** — `openclaw-payment demo` forces dry-run on, runs 6 sample payments covering all gateways and an over-limit scenario, and prints results:
+7. **Demo command** — `agentic-payments-bot demo` forces dry-run on, runs 6 sample payments covering all gateways and an over-limit scenario, and prints results:
 
 ```bash
-openclaw-payment demo --stub-mode random
+agentic-payments-bot demo --stub-mode random
 ```
 
 ### Enabling Dry-Run
@@ -1561,16 +1567,16 @@ dry_run:
 
 **Option 2 — CLI flag (overrides YAML):**
 ```bash
-openclaw-payment --dry-run pay \
+agentic-payments-bot --dry-run pay \
   --protocol x402 --amount 5 --currency USDC \
   --to 0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65 --network base
 ```
 
 **Option 3 — Demo command (always forces dry-run):**
 ```bash
-openclaw-payment demo
-openclaw-payment demo --stub-mode random
-openclaw-payment demo --stub-mode failure
+agentic-payments-bot demo
+agentic-payments-bot demo --stub-mode random
+agentic-payments-bot demo --stub-mode failure
 ```
 
 ### Encryption Key Lifecycle
@@ -1731,7 +1737,7 @@ The `demo` command runs 11 pre-built sample payments across all supported
 gateways, protocol clients, and an over-limit policy scenario:
 
 ```bash
-openclaw-payment demo --stub-mode success
+agentic-payments-bot demo --stub-mode success
 ```
 
 ```
@@ -1776,7 +1782,7 @@ openclaw-payment demo --stub-mode success
 
 ══════════════════════════════════════════════════
   Demo complete. All transactions are in SQLite.
-  Run: openclaw-payment audit --limit 30
+  Run: agentic-payments-bot audit --limit 30
 ══════════════════════════════════════════════════
 ```
 
@@ -1787,10 +1793,10 @@ After the demo, inspect the results:
 sqlite3 data/payments.db "SELECT id, protocol, gateway, amount, currency, status FROM transactions ORDER BY created_at DESC LIMIT 10;"
 
 # View the full audit trail
-openclaw-payment audit --limit 30
+agentic-payments-bot audit --limit 30
 
 # Check the generated wallet
-openclaw-payment keys list
+agentic-payments-bot keys list
 ```
 
 ### Dry-Run Configuration Reference
@@ -1852,28 +1858,28 @@ npm install
 npm run build
 
 # 2. Run the demo (no env vars needed — key auto-generates)
-npx openclaw-payment demo
+npx agentic-payments-bot demo
 
 # 3. Try individual payments
-npx openclaw-payment --dry-run pay \
+npx agentic-payments-bot --dry-run pay \
   --protocol x402 --amount 10 --currency USDC \
   --to 0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65 --network base
 
-npx openclaw-payment --dry-run pay \
+npx agentic-payments-bot --dry-run pay \
   --protocol ap2 --amount 29.99 --currency USD \
   --to merchant-test --gateway stripe
 
 # 4. Trigger a policy violation (default limit is $1000)
-npx openclaw-payment --dry-run pay \
+npx agentic-payments-bot --dry-run pay \
   --protocol ap2 --amount 5000 --currency USD \
   --to big-purchase --gateway paypal
 
 # 5. Inspect results
-npx openclaw-payment --dry-run audit --limit 20
-npx openclaw-payment --dry-run keys list
+npx agentic-payments-bot --dry-run audit --limit 30
+npx agentic-payments-bot --dry-run keys list
 
 # 6. Start the web API in dry-run
-npx openclaw-payment --dry-run &  # or set dry_run.enabled: true in YAML
+npx agentic-payments-bot --dry-run &  # or set dry_run.enabled: true in YAML
 curl http://localhost:3402/api/v1/health
 curl -X POST http://localhost:3402/api/v1/payment \
   -H "Content-Type: application/json" \
@@ -1894,8 +1900,8 @@ curl -X POST http://localhost:3402/api/v1/payment \
 
 # ── Skill Metadata ───────────────────────────────────────────────────
 skill:
-  name: agent-payments            # Skill identifier (matches SKILL.md)
-  version: 0.2.0                   # Skill version
+  name: agentic-payments-bot       # Skill identifier (matches SKILL.md)
+  version: 0.6.0                   # Skill version
 
 # ── SQLite Database ──────────────────────────────────────────────────
 database:
@@ -1943,7 +1949,7 @@ protocols:
     # for external agents to submit mandates and trigger payments.
     server:
       enabled: true                # Enable AP2 server endpoints
-      agent_id: "openclaw-payments-agent"
+      agent_id: "agentic-payments-bot"
                                    # Agent ID used when this service acts
                                    # as an AP2 client
 
@@ -2179,7 +2185,7 @@ cli:
 
 ## CLI Reference
 
-The CLI is available as `agent-payments` (via npm `bin`) or `npx agent-payments`.
+The CLI is available as `agentic-payments-bot` (via npm `bin`) or `npx agentic-payments-bot`.
 
 ### Global Options
 
@@ -2192,7 +2198,7 @@ The CLI is available as `agent-payments` (via npm `bin`) or `npx agent-payments`
 ### `pay` — Execute a Payment
 
 ```bash
-agent-payments pay [options]
+agentic-payments-bot pay [options]
 ```
 
 | Option | Required | Description |
@@ -2210,7 +2216,7 @@ agent-payments pay [options]
 
 ```bash
 # x402 USDC payment on Base
-agent-payments pay \
+agentic-payments-bot pay \
   --protocol x402 \
   --amount 5.00 \
   --currency USDC \
@@ -2218,7 +2224,7 @@ agent-payments pay \
   --network base
 
 # AP2 Stripe payment
-agent-payments pay \
+agentic-payments-bot pay \
   --protocol ap2 \
   --amount 49.99 \
   --currency USD \
@@ -2227,7 +2233,7 @@ agent-payments pay \
   --description "Monthly subscription"
 
 # PayPal payment with custom config
-agent-payments pay \
+agentic-payments-bot pay \
   --config config/production.yaml \
   --protocol ap2 \
   --amount 25.00 \
@@ -2236,7 +2242,7 @@ agent-payments pay \
   --gateway paypal
 
 # Visa Direct payment
-agent-payments pay \
+agentic-payments-bot pay \
   --protocol ap2 \
   --amount 100.00 \
   --currency USD \
@@ -2244,7 +2250,7 @@ agent-payments pay \
   --gateway visa
 
 # Mastercard Send payment
-agent-payments pay \
+agentic-payments-bot pay \
   --protocol ap2 \
   --amount 75.00 \
   --currency USD \
@@ -2252,7 +2258,7 @@ agent-payments pay \
   --gateway mastercard
 
 # x402 remote resource payment (pay for a URL)
-agent-payments pay \
+agentic-payments-bot pay \
   --protocol x402 \
   --amount 1.00 \
   --currency USDC \
@@ -2261,7 +2267,7 @@ agent-payments pay \
   --gateway x402
 
 # AP2 remote mandate submission (pay via AP2 to a URL)
-agent-payments pay \
+agentic-payments-bot pay \
   --protocol ap2 \
   --amount 19.99 \
   --currency USD \
@@ -2275,10 +2281,10 @@ Extract a `PaymentIntent` JSON from free-form AI text.
 
 ```bash
 # Direct text
-agent-payments parse '{"protocol":"x402","action":"pay","amount":"10","currency":"USDC","recipient":"0x..."}'
+agentic-payments-bot parse '{"protocol":"x402","action":"pay","amount":"10","currency":"USDC","recipient":"0x..."}'
 
 # From stdin (pipe AI model output)
-echo '... AI response with embedded JSON ...' | agent-payments parse -
+echo '... AI response with embedded JSON ...' | agentic-payments-bot parse -
 ```
 
 ### `keys` — Key Management
@@ -2287,16 +2293,16 @@ Manage encrypted keys/tokens stored in SQLite via AWS KMS.
 
 ```bash
 # Store a new encrypted key
-agent-payments keys store \
+agentic-payments-bot keys store \
   --alias default_wallet \
   --type web3_private_key \
   --value "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 
 # List all stored keys (metadata only — no plaintext)
-agent-payments keys list
+agentic-payments-bot keys list
 
 # Delete a key
-agent-payments keys delete stripe_api_key
+agentic-payments-bot keys delete stripe_api_key
 ```
 
 **Key types:**
@@ -2314,7 +2320,7 @@ agent-payments keys delete stripe_api_key
 ### `tx` — Transaction Lookup
 
 ```bash
-agent-payments tx <transaction-id>
+agentic-payments-bot tx <transaction-id>
 ```
 
 Outputs the full transaction record as JSON, including status, policy violations, tx hash, and
@@ -2323,7 +2329,7 @@ timestamps.
 ### `audit` — Query Audit Log
 
 ```bash
-agent-payments audit [options]
+agentic-payments-bot audit [options]
 ```
 
 | Option | Description |
@@ -2337,13 +2343,13 @@ agent-payments audit [options]
 
 ```bash
 # All payment audit entries from today
-agent-payments audit --category payment --since 2026-02-10T00:00:00Z
+agentic-payments-bot audit --category payment --since 2026-02-10T00:00:00Z
 
 # Audit trail for a specific transaction
-agent-payments audit --tx "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+agentic-payments-bot audit --tx "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
 # Recent policy violations
-agent-payments audit --category policy --limit 20
+agentic-payments-bot audit --category policy --limit 30
 ```
 
 ---
@@ -2383,7 +2389,7 @@ Health check endpoint.
 {
   "status": "ok",
   "skill": "agentic-payments-bot",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "dryRun": false,
   "protocols": {
     "x402": { "enabled": true },
@@ -3134,22 +3140,27 @@ When a policy violation is detected during a chat-initiated payment:
 
 ## Usage Examples
 
-### Example 1 — x402 USDC Payment via CLI
+> **Tip:** All examples below work in **dry-run mode** (no real payments, no
+> credentials needed). Prefix every CLI command with `--dry-run` or set
+> `DRY_RUN=true` in your environment.
 
-Send 5 USDC on Base to a recipient:
+### Example 1 — USDC Payment on Base (Web3)
 
+**Via CLI:**
 ```bash
 export AWS_ACCESS_KEY_ID="AKIA..."
 export AWS_SECRET_ACCESS_KEY="..."
 export AWS_KMS_KEY_ID="arn:aws:kms:..."
 
-agent-payments pay \
+agentic-payments-bot pay \
   --protocol x402 \
   --amount 5.00 \
   --currency USDC \
   --to 0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65 \
   --network base \
+  --gateway viem \
   --wallet default_wallet
+  --description "USDC payment on Base"
 ```
 
 **Output:**
@@ -3167,8 +3178,7 @@ agent-payments pay \
 ═══════════════════════════════════════
 ```
 
-### Example 2 — AP2 Stripe Payment via Web API
-
+**Via Web API (curl):**
 ```bash
 # Start the web API
 npm run web
@@ -3177,14 +3187,14 @@ npm run web
 curl -X POST http://localhost:3402/api/v1/payment \
   -H "Content-Type: application/json" \
   -d '{
-    "protocol": "ap2",
+    "protocol": "x402",
     "action": "pay",
-    "amount": "49.99",
-    "currency": "USD",
-    "recipient": "merchant-shop-12345",
-    "gateway": "stripe",
-    "description": "Premium subscription",
-    "metadata": {"plan": "annual"}
+    "amount": "5.00",
+    "currency": "USDC",
+    "recipient": "0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65",
+    "network": "base",
+    "gateway": "viem",
+    "description": "USDC payment on Base"
   }'
 ```
 
@@ -3193,7 +3203,172 @@ curl -X POST http://localhost:3402/api/v1/payment \
 {
   "success": true,
   "tx": {
-    "id": "b2c3d4e5-f678-9012-bcde-f12345678901",
+    "id": "a1b2c3d4-5678-9012-3456-789012345678",
+    "protocol": "x402",
+    "gateway": "viem",
+    "amount": 5.0,
+    "amount_usd": 5.0,
+    "currency": "USDC",
+    "status": "executed"
+  },
+  "txHash": "0xabc123...def456",
+  "policyResult": { "allowed": true, "violations": [], "requiresHumanConfirmation": false },
+  "confirmationRequired": false,
+  "dryRun": true
+}
+```
+
+### Example 2 — USDC Payment on Ethereum (Web3)
+
+**Via CLI:**
+```bash
+agentic-payments-bot pay \
+  --protocol x402 \
+  --amount 10.00 \
+  --currency USDC \
+  --to 0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97 \
+  --network ethereum \
+  --gateway viem
+```
+
+**Via Web API (curl):**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "x402",
+    "action": "pay",
+    "amount": "10.00",
+    "currency": "USDC",
+    "recipient": "0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
+    "network": "ethereum",
+    "gateway": "viem",
+    "description": "USDC payment on Ethereum"
+  }'
+```
+
+### Example 3 — USDT Payment on Base (Web3)
+
+**Via CLI:**
+```bash
+agentic-payments-bot pay \
+  --protocol x402 \
+  --amount 25.00 \
+  --currency USDT \
+  --to 0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65 \
+  --network base \
+  --gateway viem
+```
+
+**Via Web API (curl):**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "x402",
+    "action": "pay",
+    "amount": "25.00",
+    "currency": "USDT",
+    "recipient": "0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65",
+    "network": "base",
+    "gateway": "viem",
+    "description": "USDT payment on Base"
+  }'
+```
+
+### Example 4 — USDT Payment on Ethereum (Web3)
+
+**Via CLI:**
+```bash
+agentic-payments-bot pay \
+  --protocol x402 \
+  --amount 50.00 \
+  --currency USDT \
+  --to 0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97 \
+  --network ethereum \
+  --gateway viem
+```
+
+**Via Web API (curl):**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "x402",
+    "action": "pay",
+    "amount": "50.00",
+    "currency": "USDT",
+    "recipient": "0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
+    "network": "ethereum",
+    "gateway": "viem",
+    "description": "USDT payment on Ethereum"
+  }'
+```
+
+### Example 5 — ETH Transfer on Ethereum (Web3)
+
+**Via CLI:**
+```bash
+agentic-payments-bot pay \
+  --protocol x402 \
+  --amount 0.01 \
+  --currency ETH \
+  --to 0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97 \
+  --network ethereum \
+  --gateway viem
+```
+
+**Via Web API (curl):**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "x402",
+    "action": "pay",
+    "amount": "0.01",
+    "currency": "ETH",
+    "recipient": "0x4838B106FCe9647Bdf1E7877BF73cE8B0BAD5f97",
+    "network": "ethereum",
+    "gateway": "viem",
+    "description": "ETH transfer on Ethereum"
+  }'
+```
+
+### Example 6 — Stripe Payment (Web2)
+
+**Via CLI:**
+```bash
+agentic-payments-bot pay \
+  --protocol ap2 \
+  --amount 49.99 \
+  --currency USD \
+  --to merchant-stripe-001 \
+  --network web2 \
+  --gateway stripe \
+  --description "Stripe payment"
+```
+
+**Via Web API (curl):**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "ap2",
+    "action": "pay",
+    "amount": "49.99",
+    "currency": "USD",
+    "recipient": "merchant-stripe-001",
+    "gateway": "stripe",
+    "description": "Stripe payment"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "tx": {
+    "id": "b2c3d4e5-6789-0123-4567-890123456789",
     "protocol": "ap2",
     "gateway": "stripe",
     "amount": 49.99,
@@ -3203,8 +3378,8 @@ curl -X POST http://localhost:3402/api/v1/payment \
   },
   "web2Result": {
     "gateway": "stripe",
-    "transaction_id": "pi_3Abc123...",
-    "status": "pending",
+    "transaction_id": "pi_dryrun_abc123def456",
+    "status": "success",
     "amount": "49.99",
     "currency": "USD"
   },
@@ -3213,110 +3388,98 @@ curl -X POST http://localhost:3402/api/v1/payment \
     "violations": [],
     "requiresHumanConfirmation": false
   },
-  "confirmationRequired": false
+  "confirmationRequired": false,
+  "dryRun": true
 }
 ```
 
-### Example 3 — AI Chat-Driven Payment
+### Example 7 — PayPal Payment (Web2)
 
-User prompt in OpenClaw chat:
-
-> "Pay 10 USDC to 0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65 on Base for API access"
-
-The agent responds with embedded JSON (per `SKILL.md` instructions):
-
-> I'll process that payment for you:
-> ```json
-> {
->   "protocol": "x402",
->   "action": "pay",
->   "amount": "10.00",
->   "currency": "USDC",
->   "recipient": "0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65",
->   "network": "base",
->   "gateway": "viem",
->   "description": "API access payment"
-> }
-> ```
-
-The skill's protocol router extracts this JSON, validates it, runs policy checks, and executes
-the payment.
-
-### Example 4 — Policy Violation & Human Confirmation
-
-**Via Web API:**
-
+**Via CLI:**
 ```bash
-# 1. Submit a payment that exceeds the single-transaction limit
+agentic-payments-bot pay \
+  --protocol ap2 \
+  --amount 25.00 \
+  --currency USD \
+  --to seller@example.com \
+  --gateway paypal \
+  --description "PayPal payment"
+```
+
+**Via Web API (curl):**
+```bash
 curl -X POST http://localhost:3402/api/v1/payment \
   -H "Content-Type: application/json" \
   -d '{
     "protocol": "ap2",
     "action": "pay",
-    "amount": "1500.00",
+    "amount": "25.00",
     "currency": "USD",
-    "recipient": "vendor-99",
-    "gateway": "stripe"
+    "recipient": "seller@example.com",
+    "gateway": "paypal",
+    "description": "PayPal payment"
   }'
-
-# Response: 202 with confirmationRequired: true
-# {
-#   "confirmationRequired": true,
-#   "confirmationPrompt": "Confirmation required for tx abc123... POST /api/v1/confirm/abc123..."
-# }
-
-# 2. Check pending confirmations
-curl http://localhost:3402/api/v1/pending
-
-# 3. Approve the payment
-curl -X POST http://localhost:3402/api/v1/confirm/abc123... \
-  -H "Content-Type: application/json" \
-  -d '{"confirmed": true, "reason": "One-time approved by CFO"}'
 ```
 
-### Example 5 — Key Management
-
-```bash
-# Store a wallet private key
-agent-payments keys store \
-  --alias trading_wallet \
-  --type web3_private_key \
-  --value "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
-
-# Store Stripe API key
-agent-payments keys store \
-  --alias stripe_api_key \
-  --type stripe_token \
-  --value "sk_live_abcdefghijklmnop"
-
-# List all keys (plaintext is NEVER shown)
-agent-payments keys list
-
-# ┌──────────┬───────────────────┬─────────────────┬─────────────────────────────┬─────────────────────┐
-# │ id       │ key_type          │ key_alias       │ kms_key_id                  │ created_at          │
-# ├──────────┼───────────────────┼─────────────────┼─────────────────────────────┼─────────────────────┤
-# │ a1b2...  │ web3_private_key  │ trading_wallet  │ arn:aws:kms:us-east-1:...   │ 2026-02-10 12:00:00 │
-# │ c3d4...  │ stripe_token      │ stripe_api_key  │ arn:aws:kms:us-east-1:...   │ 2026-02-10 12:01:00 │
-# └──────────┴───────────────────┴─────────────────┴─────────────────────────────┴─────────────────────┘
-
-# Delete a key
-agent-payments keys delete trading_wallet
+**Response:**
+```json
+{
+  "success": true,
+  "tx": { "id": "...", "protocol": "ap2", "gateway": "paypal", "status": "executed" },
+  "web2Result": {
+    "gateway": "paypal",
+    "transaction_id": "PAYPAL-DRYRUN-ABC1234567",
+    "status": "success",
+    "amount": "25.00",
+    "currency": "USD",
+    "receipt_url": "https://sandbox.paypal.com/dryrun/approval"
+  },
+  "dryRun": true
+}
 ```
 
-### Example 6 — Mastercard Send Payment
+### Example 8 — Visa Direct Payment (Web2)
 
 **Via CLI:**
 ```bash
-agent-payments pay \
+agentic-payments-bot pay \
+  --protocol ap2 \
+  --amount 100.00 \
+  --currency USD \
+  --to 4111111111111111 \
+  --gateway visa \
+  --description "Visa Direct push payment"
+```
+
+**Via Web API (curl):**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "ap2",
+    "action": "pay",
+    "amount": "100.00",
+    "currency": "USD",
+    "recipient": "4111111111111111",
+    "gateway": "visa",
+    "description": "Visa Direct push payment"
+  }'
+```
+
+### Example 9 — Mastercard Send Payment (Web2)
+
+**Via CLI:**
+```bash
+agentic-payments-bot pay \
   --protocol ap2 \
   --amount 75.00 \
   --currency USD \
-  --to 5500000000000004 \
+  --to 5111111111111118 \
   --gateway mastercard \
-  --description "Freelancer payout via Mastercard Send"
+  --description "Mastercard Send payment"
 ```
 
-**Via Web API:**
+**Via Web API (curl):**
 ```bash
 curl -X POST http://localhost:3402/api/v1/payment \
   -H "Content-Type: application/json" \
@@ -3325,9 +3488,9 @@ curl -X POST http://localhost:3402/api/v1/payment \
     "action": "pay",
     "amount": "75.00",
     "currency": "USD",
-    "recipient": "5500000000000004",
+    "recipient": "5111111111111118",
     "gateway": "mastercard",
-    "description": "Freelancer payout via Mastercard Send"
+    "description": "Mastercard Send payment"
   }'
 ```
 
@@ -3361,8 +3524,28 @@ curl -X POST http://localhost:3402/api/v1/payment \
 }
 ```
 
-### Example 7 — Google Pay Payment via Web API
+### Example 10 — Google Pay Payment (Web2)
 
+**Via CLI:**
+```bash
+agentic-payments-bot pay \
+  --protocol ap2 \
+  --amount 35.00 \
+  --currency USD \
+  --to merchant-gpay-001 \
+  --gateway googlepay \
+  --description "Google Pay payment"
+```
+
+> **Note:** The `paymentToken` in `metadata` must be the encrypted payment token
+> obtained from the client-side [Google Pay JS API](https://developers.google.com/pay/api).
+> The server never generates this token — it only processes it.
+
+> **Note:** In production, `metadata.paymentToken` must be supplied via the Web API
+> (the token comes from the client-side Google Pay JS API). The CLI works in dry-run
+> mode without it.
+
+**Via Web API (curl):**
 ```bash
 curl -X POST http://localhost:3402/api/v1/payment \
   -H "Content-Type: application/json" \
@@ -3373,7 +3556,7 @@ curl -X POST http://localhost:3402/api/v1/payment \
     "currency": "USD",
     "recipient": "merchant-gpay-001",
     "gateway": "googlepay",
-    "description": "In-app purchase via Google Pay",
+    "description": "Google Pay payment",
     "metadata": {
       "paymentToken": "<encrypted-token-from-google-pay-js-api>",
       "countryCode": "US"
@@ -3396,26 +3579,38 @@ curl -X POST http://localhost:3402/api/v1/payment \
   },
   "web2Result": {
     "gateway": "googlepay",
-    "transaction_id": "GPAY-abc123def456",
+    "transaction_id": "GPAY-DRYRUN-ABC123DEF456",
     "status": "success",
     "amount": "35.00",
     "currency": "USD"
   },
-  "policyResult": {
-    "allowed": true,
-    "violations": [],
-    "requiresHumanConfirmation": false
-  },
-  "confirmationRequired": false
+  "dryRun": true
 }
 ```
 
-> **Note:** The `paymentToken` in `metadata` must be the encrypted payment token
-> obtained from the client-side [Google Pay JS API](https://developers.google.com/pay/api).
-> The server never generates this token — it only processes it.
+### Example 11 — Apple Pay Payment (Web2)
 
-### Example 8 — Apple Pay Payment via Web API
+**Via CLI:**
+```bash
+agentic-payments-bot pay \
+  --protocol ap2 \
+  --amount 59.99 \
+  --currency USD \
+  --to merchant-applepay-001 \
+  --gateway applepay \
+  --description "Apple Pay payment"
+```
 
+> **Note:** The `paymentToken` must be the encrypted token from the client-side
+> [Apple Pay JS API](https://developer.apple.com/apple-pay/). The optional
+> `validationURL` triggers server-to-server merchant session validation with Apple
+> before the token is processed.
+
+> **Note:** In production, `metadata.paymentToken` must be supplied via the Web API
+> (the token comes from the client-side Apple Pay JS API). The CLI works in dry-run
+> mode without it.
+
+**Via Web API (curl):**
 ```bash
 curl -X POST http://localhost:3402/api/v1/payment \
   -H "Content-Type: application/json" \
@@ -3426,7 +3621,7 @@ curl -X POST http://localhost:3402/api/v1/payment \
     "currency": "USD",
     "recipient": "merchant-applepay-001",
     "gateway": "applepay",
-    "description": "Checkout via Apple Pay",
+    "description": "Apple Pay payment",
     "metadata": {
       "paymentToken": "<encrypted-token-from-apple-pay-js-api>",
       "validationURL": "https://apple-pay-gateway-cert.apple.com/paymentservices/startSession"
@@ -3449,27 +3644,236 @@ curl -X POST http://localhost:3402/api/v1/payment \
   },
   "web2Result": {
     "gateway": "applepay",
-    "transaction_id": "APAY-xyz789abc012",
+    "transaction_id": "APAY-DRYRUN-XYZ789ABC012",
     "status": "success",
     "amount": "59.99",
     "currency": "USD",
-    "receipt_url": "https://example.com/receipt/xyz789"
+    "receipt_url": "https://sandbox.apple.com/dryrun/receipt"
   },
-  "policyResult": {
-    "allowed": true,
-    "violations": [],
-    "requiresHumanConfirmation": false
-  },
-  "confirmationRequired": false
+  "dryRun": true
 }
 ```
 
-> **Note:** The `paymentToken` must be the encrypted token from the client-side
-> [Apple Pay JS API](https://developer.apple.com/apple-pay/). The optional
-> `validationURL` triggers server-to-server merchant session validation with Apple
-> before the token is processed.
+### Example 12 — x402 Remote Resource Payment (Paying Another Service)
 
-### Example 9 — x402 Paywall (External Agent Paying You)
+This demonstrates the **client side** — your agent pays for access to an x402-protected
+resource hosted by another service.
+
+**Via CLI:**
+```bash
+agentic-payments-bot pay \
+  --protocol x402 \
+  --amount 1.00 \
+  --currency USDC \
+  --to https://api.premium-service.com/v1/data \
+  --network base \
+  --gateway x402 \
+  --description "Access premium data via x402"
+```
+
+**Via Web API (curl):**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "x402",
+    "action": "pay",
+    "amount": "1.00",
+    "currency": "USDC",
+    "recipient": "https://api.premium-service.com/v1/data",
+    "network": "base",
+    "gateway": "x402",
+    "description": "Access premium data via x402"
+  }'
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "tx": {
+    "id": "f6789012-3456-def0-1234-567890abcdef",
+    "protocol": "x402",
+    "gateway": "x402",
+    "amount": 1.0,
+    "currency": "USDC",
+    "recipient": "https://api.premium-service.com/v1/data",
+    "status": "executed"
+  },
+  "txHash": "0xabc123...",
+  "policyResult": { "allowed": true, "violations": [], "requiresHumanConfirmation": false },
+  "confirmationRequired": false,
+  "dryRun": true
+}
+```
+
+### Example 13 — AP2 Remote Mandate Payment (Paying Another Service)
+
+This demonstrates the **client side** — your agent creates and submits a mandate to an
+AP2-compliant external payment processor.
+
+**Via CLI:**
+```bash
+agentic-payments-bot pay \
+  --protocol ap2 \
+  --amount 79.99 \
+  --currency USD \
+  --to https://merchant.example.com/ap2/process-payment \
+  --gateway ap2 \
+  --description "Annual subscription via AP2"
+```
+
+**Via Web API (curl):**
+```bash
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "ap2",
+    "action": "pay",
+    "amount": "79.99",
+    "currency": "USD",
+    "recipient": "https://merchant.example.com/ap2/process-payment",
+    "gateway": "ap2",
+    "description": "Annual subscription via AP2",
+    "metadata": {
+      "payment_method_type": "card"
+    }
+  }'
+```
+
+### Example 14 — AI Chat-Driven Payment
+
+User prompt in OpenClaw chat:
+
+> "Pay 10 USDC to 0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65 on Base for API access"
+
+The agent responds with embedded JSON (per `SKILL.md` instructions):
+
+```text
+I'll process this payment for you now:
+
+```json
+{
+  "protocol": "x402",
+  "action": "pay",
+  "amount": "10.00",
+  "currency": "USDC",
+  "recipient": "0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65",
+  "network": "base",
+  "gateway": "viem",
+  "description": "API access payment"
+}
+```
+
+The payment has been submitted.
+```
+
+The skill's protocol router extracts this JSON, validates it, runs policy checks, and executes
+the payment.
+
+The skill automatically parses the JSON block using `parsePaymentIntentFromAIOutput()`.
+
+**Via CLI parse:**
+```bash
+agentic-payments-bot parse '{"protocol":"x402","action":"pay","amount":"5.00","currency":"USDC","recipient":"0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65","network":"base"}'
+```
+
+**Via Web API:**
+```bash
+curl -X POST http://localhost:3402/api/v1/parse \
+  -H "Content-Type: application/json" \
+  -d '{"text": "{\"protocol\":\"x402\",\"action\":\"pay\",\"amount\":\"5.00\",\"currency\":\"USDC\",\"recipient\":\"0x742d35Cc6635C0532925a3b844Bc9e7595f2bD65\",\"network\":\"base\"}"}'
+```
+
+### Example 15 — Policy Violation & Human Confirmation
+
+**Via CLI (over-limit triggers policy engine):**
+```bash
+agentic-payments-bot pay \
+  --protocol ap2 \
+  --amount 99999.99 \
+  --currency USD \
+  --to merchant-big-spender \
+  --gateway stripe \
+  --description "Large payment (expect policy violation)"
+```
+
+The CLI will prompt for human confirmation:
+```
+⚠️  Policy violations detected:
+  • [single_transaction] Amount $99999.99 exceeds single-tx limit of $1000.00
+
+Confirm payment? (yes/no):
+```
+
+**Via Web API (returns 202 with confirmation required):**
+
+```bash
+# 1. Submit a payment that exceeds the single-transaction limit
+curl -X POST http://localhost:3402/api/v1/payment \
+  -H "Content-Type: application/json" \
+  -d '{
+    "protocol": "ap2",
+    "action": "pay",
+    "amount": "99999.99",
+    "currency": "USD",
+    "recipient": "merchant-big-spender",
+    "gateway": "stripe"
+  }'
+```
+
+```bash
+Response: 202 with confirmationRequired: true
+{
+  "confirmationRequired": true,
+  "confirmationPrompt": "Confirmation required for tx abc123... POST /api/v1/confirm/abc123..."
+}
+```
+
+```bash
+# 2. Check pending confirmations
+curl http://localhost:3402/api/v1/pending
+```
+
+**Confirm via API:**
+```bash
+# 3. Approve the payment
+curl -X POST http://localhost:3402/api/v1/confirm/<tx-id> \
+  -H "Content-Type: application/json" \
+  -d '{"confirmed": true, "reason": "One-time approved by CFO"}'
+```
+
+### Example 16 — Key Management
+
+```bash
+# Store a wallet private key
+agentic-payments-bot keys store \
+  --alias trading_wallet \
+  --type web3_private_key \
+  --value "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+
+# Store Stripe API key
+agentic-payments-bot keys store \
+  --alias stripe_api_key \
+  --type stripe_token \
+  --value "sk_test_..."
+
+# List all stored keys (metadata only, plaintext is NEVER shown)
+agentic-payments-bot keys list
+
+# ┌──────────┬───────────────────┬─────────────────┬─────────────────────────────┬─────────────────────┐
+# │ id       │ key_type          │ key_alias       │ kms_key_id                  │ created_at          │
+# ├──────────┼───────────────────┼─────────────────┼─────────────────────────────┼─────────────────────┤
+# │ a1b2...  │ web3_private_key  │ trading_wallet  │ arn:aws:kms:us-east-1:...   │ 2026-02-10 12:00:00 │
+# │ c3d4...  │ stripe_token      │ stripe_api_key  │ arn:aws:kms:us-east-1:...   │ 2026-02-10 12:01:00 │
+# └──────────┴───────────────────┴─────────────────┴─────────────────────────────┴─────────────────────┘
+
+# Delete a key
+agentic-payments-bot keys delete trading_wallet
+agentic-payments-bot keys delete stripe_api_key
+```
+
+### Example 17 — x402 Paywall (External Agent Paying You)
 
 This demonstrates the **server side** — an external agent pays for access to a
 resource protected by the x402 paywall middleware.
@@ -3539,7 +3943,7 @@ curl http://localhost:3402/api/v1/x402/pricing
 }
 ```
 
-### Example 10 — AP2 Mandate (External Agent Paying You)
+### Example 18 — AP2 Mandate (External Agent Paying You)
 
 This demonstrates the **server side** — an external agent submits an AP2 mandate
 and the server processes the payment internally.
@@ -3559,8 +3963,8 @@ curl -X POST http://localhost:3402/api/v1/ap2/mandates \
     },
     "constraints": {
       "max_amount": "29.99",
-      "valid_from": "2026-03-06T00:00:00.000Z",
-      "valid_until": "2026-03-07T00:00:00.000Z",
+      "valid_from": "2026-03-28T00:00:00.000Z",
+      "valid_until": "2026-03-29T00:00:00.000Z",
       "single_use": true
     },
     "delegator": {
@@ -3589,13 +3993,16 @@ curl -X POST http://localhost:3402/api/v1/ap2/sign-mandate \
       "intent": {
         "action": "pay",
         "description": "API access subscription",
-        "amount": { "value": "29.99", "currency": "USD" },
+        "amount": {
+          "value": "29.99",
+          "currency": "USD"
+        },
         "recipient": { "id": "merchant-001" }
       },
       "constraints": {
         "max_amount": "29.99",
-        "valid_from": "2026-03-06T00:00:00.000Z",
-        "valid_until": "2026-03-07T00:00:00.000Z",
+        "valid_from": "2026-03-28T00:00:00.000Z",
+        "valid_until": "2026-03-29T00:00:00.000Z",
         "single_use": true
       },
       "delegator": { "agent_id": "external-agent-001" }
@@ -3624,13 +4031,16 @@ curl -X POST http://localhost:3402/api/v1/ap2/process-payment \
       "intent": {
         "action": "pay",
         "description": "API access subscription",
-        "amount": { "value": "29.99", "currency": "USD" },
+        "amount": {
+          "value": "29.99",
+          "currency": "USD"
+        },
         "recipient": { "id": "merchant-001" }
       },
       "constraints": {
         "max_amount": "29.99",
-        "valid_from": "2026-03-06T00:00:00.000Z",
-        "valid_until": "2026-03-07T00:00:00.000Z",
+        "valid_from": "2026-03-28T00:00:00.000Z",
+        "valid_until": "2026-03-29T00:00:00.000Z",
         "single_use": true
       },
       "delegator": { "agent_id": "external-agent-001" },
@@ -3674,117 +4084,6 @@ curl http://localhost:3402/api/v1/ap2/mandates/mandate_1709712000_demo
 }
 ```
 
-### Example 11 — x402 Remote Resource Payment (Paying Another Service)
-
-This demonstrates the **client side** — your agent pays for access to an x402-protected
-resource hosted by another service.
-
-**Via Web API:**
-```bash
-curl -X POST http://localhost:3402/api/v1/payment \
-  -H "Content-Type: application/json" \
-  -d '{
-    "protocol": "x402",
-    "action": "pay",
-    "amount": "1.00",
-    "currency": "USDC",
-    "recipient": "https://api.premium-service.com/v1/data",
-    "network": "base",
-    "gateway": "x402",
-    "description": "Access premium data via x402"
-  }'
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "tx": {
-    "id": "f6789012-3456-def0-1234-567890abcdef",
-    "protocol": "x402",
-    "gateway": "x402",
-    "amount": 1.0,
-    "currency": "USDC",
-    "recipient": "https://api.premium-service.com/v1/data",
-    "status": "executed"
-  },
-  "txHash": "0xabc123...",
-  "x402Result": {
-    "data": { "premium": "content" },
-    "txHash": "0xabc123...",
-    "network": "base"
-  },
-  "policyResult": {
-    "allowed": true,
-    "violations": [],
-    "requiresHumanConfirmation": false
-  },
-  "confirmationRequired": false,
-  "dryRun": false
-}
-```
-
-**Via CLI:**
-```bash
-agent-payments pay \
-  --protocol x402 \
-  --amount 1.00 \
-  --currency USDC \
-  --to https://api.premium-service.com/v1/data \
-  --network base \
-  --gateway x402
-```
-
-### Example 12 — AP2 Remote Mandate Payment (Paying Another Service)
-
-This demonstrates the **client side** — your agent creates and submits a mandate to an
-AP2-compliant external payment processor.
-
-**Via Web API:**
-```bash
-curl -X POST http://localhost:3402/api/v1/payment \
-  -H "Content-Type: application/json" \
-  -d '{
-    "protocol": "ap2",
-    "action": "pay",
-    "amount": "79.99",
-    "currency": "USD",
-    "recipient": "https://merchant.example.com/ap2/process-payment",
-    "gateway": "ap2",
-    "description": "Annual subscription via AP2",
-    "metadata": {
-      "payment_method_type": "card"
-    }
-  }'
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "tx": {
-    "id": "a7890123-4567-ef01-2345-67890abcdef1",
-    "protocol": "ap2",
-    "gateway": "ap2",
-    "amount": 79.99,
-    "currency": "USD",
-    "status": "executed"
-  },
-  "ap2Result": {
-    "mandate_id": "mandate_1709712000_xyz",
-    "transaction_id": "ap2-tx-abc123",
-    "status": "success"
-  },
-  "policyResult": {
-    "allowed": true,
-    "violations": [],
-    "requiresHumanConfirmation": false
-  },
-  "confirmationRequired": false,
-  "dryRun": false
-}
-```
-
 ---
 
 ## Development
@@ -3816,7 +4115,7 @@ npm run dev          # ts-node src/index.ts
 | `stripe` | `^17.0.0` | Stripe payment SDK |
 | `@paypal/paypal-server-sdk` | `^2.0.0` | PayPal payments |
 | `@aws-sdk/client-kms` | `^3.750.0` | AWS KMS encrypt/decrypt (`aws-kms` provider) |
-| `better-sqlite3` | `^11.8.0` | SQLite driver (native, synchronous) |
+| `better-sqlite3` | `^12.8.0` | SQLite driver (native, synchronous) |
 | `yaml` | `^2.7.0` | YAML config parsing |
 | `express` | `^5.1.0` | Web API server |
 | `commander` | `^13.1.0` | CLI framework |
@@ -3845,15 +4144,15 @@ npm run dev          # ts-node src/index.ts
 | `OS keyring unavailable ... Falling back to local-aes` | No D-Bus session (headless server) | Expected behavior — use `gpg` or `local-aes` provider explicitly, or install a D-Bus session |
 | `GPG provider requires 'kms.gpg_key_id'` | Missing GPG key ID in config | Set `kms.gpg_key_id` to your GPG key fingerprint or email |
 | `gpg2: command not found` | GnuPG not installed | Install `gnupg2` package, or set `kms.gpg_binary` to the correct path |
-| `D-Bus Secret Service: key not found` | Secret not stored in keyring | Store the key first via `agent-payments keys store`, or check that the correct keyring is unlocked |
+| `D-Bus Secret Service: key not found` | Secret not stored in keyring | Store the key first via `agentic-payments-bot keys store`, or check that the correct keyring is unlocked |
 | KDE Wallet prompt on every access | KWallet locked or Secret Service bridge disabled | Unlock KDE Wallet, or enable Secret Service integration in KDE System Settings |
 | `@aspect-build/keytar` build failure | Missing C++ build tools for native addon | Install `build-essential` (Linux), Xcode CLI tools (macOS), or Visual Studio Build Tools (Windows). Or use `linux_keyring_backend: "dbus-next"` to avoid native compilation. |
-| `Encrypted key not found for alias 'X'` | Key not stored yet | Run `agent-payments keys store --alias X ...` |
+| `Encrypted key not found for alias 'X'` | Key not stored yet | Run `agentic-payments-bot keys store --alias X ...` |
 | `Network 'X' is disabled in configuration` | Chain disabled in YAML | Set `web3.X.enabled: true` in config |
 | `x402 protocol is disabled in configuration` | Protocol toggle | Set `protocols.x402.enabled: true` |
 | `Could not parse a valid payment intent` | AI output doesn't contain valid JSON | Ensure agent uses the exact JSON schema from `SKILL.md` |
 | `SQLITE_BUSY` errors | Concurrent writes | Increase `database.busy_timeout_ms` or ensure WAL mode |
-| `Policy violations detected` (unexpected) | Aggregate limits hit | Check `agent-payments audit --category policy` and adjust `policy.rules` |
+| `Policy violations detected` (unexpected) | Aggregate limits hit | Check `agentic-payments-bot audit --category policy` and adjust `policy.rules` |
 | Web API not starting | Port conflict | Change `web_api.port` in config |
 | `Google Pay requires a 'paymentToken' in metadata` | Missing client-side token | Ensure the Google Pay JS API token is passed in `metadata.paymentToken` |
 | `Apple Pay requires a 'paymentToken' in metadata` | Missing client-side token | Ensure the Apple Pay JS API token is passed in `metadata.paymentToken` |
@@ -3874,12 +4173,12 @@ npm run dev          # ts-node src/index.ts
 
 2. **Check the audit log** for full context:
    ```bash
-   agent-payments audit --limit 20
+   agentic-payments-bot audit --limit 30
    ```
 
 3. **Inspect a specific transaction:**
    ```bash
-   agent-payments tx <transaction-id>
+   agentic-payments-bot tx <transaction-id>
    ```
 
 4. **Query SQLite directly:**
