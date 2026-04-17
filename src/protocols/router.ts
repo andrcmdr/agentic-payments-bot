@@ -6,6 +6,24 @@ import { getLogger } from "../logging/logger";
 import { auditLog } from "../db/audit";
 
 // ─── Payment Intent Schema ──────────────────────────────────────────────────
+//
+// `protocol` — a metadata tag indicating the payment's conceptual protocol:
+//   • "x402" — onchain / stablecoin / crypto payment flavour
+//   • "ap2"  — agent-mediated / mandate-based payment flavour
+//
+// `gateway` — the actual execution backend used to move money:
+//   • "viem"       — direct on-chain ETH/ERC-20 transfer via Viem
+//   • "stripe"     — Stripe Payment Intents
+//   • "paypal"     — PayPal Orders API
+//   • "visa"       — Visa Direct Push Payments
+//   • "mastercard" — Mastercard Send API
+//   • "googlepay"  — Google Pay token processing
+//   • "applepay"   — Apple Pay token processing
+//   • "x402"       — outbound x402 client (pay for an external x402-protected resource)
+//   • "ap2"        — outbound AP2 client (submit a mandate to an external AP2 service)
+//
+// The `protocol` tag does NOT determine the execution path — `gateway` does.
+// When `gateway` is omitted, the router auto-detects from currency and recipient.
 
 export const PaymentIntentSchema = z.object({
   protocol: z.enum(["x402", "ap2"]),
@@ -82,6 +100,13 @@ export function parsePaymentIntentFromAIOutput(
 
 // ─── Protocol Router ────────────────────────────────────────────────────────
 
+/**
+ * paymentType determines the execution branch in index.ts:
+ *   "web3" → sendEth / sendErc20 (direct on-chain via Viem)
+ *   "web2" → executeWeb2Payment (Stripe / PayPal / Visa / MC / GPay / APay)
+ *   "x402" → X402Client (outbound x402 client — discover → sign → pay → access)
+ *   "ap2"  → AP2Client  (outbound AP2 client — mandate → sign → cred → submit)
+ */
 export type ProtocolRoute = {
   protocol: "x402" | "ap2";
   paymentType: "web3" | "web2" | "x402" | "ap2";
@@ -89,7 +114,13 @@ export type ProtocolRoute = {
 };
 
 /**
- * Decides which protocol + payment backend to use based on the parsed intent.
+ * Decides which execution backend to use based on the parsed intent.
+ *
+ * Resolution order:
+ * 1. Explicit `gateway` field → deterministic routing.
+ * 2. URL-shaped `recipient` + matching `protocol` → protocol client gateway.
+ * 3. Crypto currency or x402 protocol hint → web3/viem.
+ * 4. Fallback → web2/stripe.
  *
  * Gateway values:
  *   - "viem"         → direct web3 (Viem ETH/ERC-20)
@@ -105,31 +136,40 @@ export function routePaymentIntent(intent: PaymentIntent): ProtocolRoute {
   let paymentType: ProtocolRoute["paymentType"];
   let gateway: string;
 
-  // ── Explicit gateway override ─────────────────────────────────────────
   if (intent.gateway) {
+    // ── Explicit gateway: deterministic routing ─────────────────────────
     gateway = intent.gateway;
-    if (gateway === "x402") {
-      paymentType = "x402";
-    } else if (gateway === "ap2") {
-      paymentType = "ap2";
-    } else if (gateway === "viem") {
-      paymentType = "web3";
-    } else {
-      paymentType = "web2";
+    switch (gateway) {
+      case "viem":
+        paymentType = "web3";
+        break;
+      case "x402":
+        paymentType = "x402";
+        break;
+      case "ap2":
+        paymentType = "ap2";
+        break;
+      default:
+        // stripe, paypal, visa, mastercard, googlepay, applepay
+        paymentType = "web2";
+        break;
     }
   } else {
-    // Auto-detect: based on recipient's URL with matching protocol → protocol client
-    const isUrl = intent.recipient.startsWith("http://") || intent.recipient.startsWith("https://");
+    // ── Auto-detection ──────────────────────────────────────────────────
+    const isUrl =
+      intent.recipient.startsWith("http://") ||
+      intent.recipient.startsWith("https://");
+
     if (isUrl && intent.protocol === "x402") {
-      // Recipient is a URL → use x402 client to pay for the remote resource
+      // URL recipient + x402 protocol → outbound x402 client
       paymentType = "x402";
       gateway = "x402";
     } else if (isUrl && intent.protocol === "ap2") {
-      // Recipient is a remote AP2 endpoint → use AP2 client
+      // URL recipient + ap2 protocol → outbound AP2 client
       paymentType = "ap2";
       gateway = "ap2";
     } else {
-      // Auto-detect based on protocol and currency
+      // Currency / protocol heuristic
       const cryptoCurrencies = ["USDC", "ETH", "WETH", "DAI", "USDT"];
       if (
         intent.protocol === "x402" ||
@@ -144,7 +184,7 @@ export function routePaymentIntent(intent: PaymentIntent): ProtocolRoute {
     }
   }
 
-  // Validate protocol is enabled
+  // ── Validate protocol toggles ────────────────────────────────────────
   if (intent.protocol === "x402" && !config.protocols.x402.enabled) {
     throw new Error("x402 protocol is disabled in configuration");
   }
