@@ -35,9 +35,9 @@ program
   .requiredOption("--protocol <protocol>", "Protocol: x402 or ap2")
   .requiredOption("--amount <amount>", "Payment amount (decimal string)")
   .requiredOption("--currency <currency>", "Currency code (USDC, USDT, ETH, WETH, DAI, USD, EUR, ...)")
-  .requiredOption("--to <recipient>", "Recipient address, ID or URL")
+  .requiredOption("--to <recipient>", "Recipient address, merchant ID or URL")
   .option("--network <network>", "Network (ethereum, base, polygon, web2)")
-  .option("--gateway <gateway>", "Gateway (viem, stripe, paypal, visa, mastercard, googlepay, applepay, x402, ap2)")
+  .option("--gateway <gateway>", "Gateway: viem, stripe, paypal, visa, mastercard, googlepay, applepay, x402, ap2")
   .option("--description <desc>", "Payment description")
   .option("--wallet <alias>", "Wallet key alias in key store", "default_wallet")
   .action(async (opts) => {
@@ -366,7 +366,7 @@ program
         }),
       },
       {
-        label: "1️⃣2️⃣   x402 remote resource payment (X402 protocol client)",
+        label: "1️⃣2️⃣   x402 remote resource payment (X402 protocol gateway → outbound client)",
         intent: PaymentIntentSchema.parse({
           protocol: "x402",
           action: "pay",
@@ -375,11 +375,11 @@ program
           recipient: "https://api.example.com/premium/data",
           network: "base",
           gateway: "x402",
-          description: "Demo: x402 remote resource payment",
+          description: "Demo: pay for an external x402-protected resource",
         }),
       },
       {
-        label: "1️⃣3️⃣   AP2 remote mandate payment (AP2 protocol client)",
+        label: "1️⃣3️⃣   AP2 remote mandate payment (AP2 protocol gateway → outbound client)",
         intent: PaymentIntentSchema.parse({
           protocol: "ap2",
           action: "pay",
@@ -387,7 +387,7 @@ program
           currency: "USD",
           recipient: "https://merchant.example.com/ap2/process-payment",
           gateway: "ap2",
-          description: "Demo: AP2 remote mandate payment",
+          description: "Demo: submit a mandate to an external AP2 service",
           metadata: { payment_method_type: "stripe" },
         }),
       },
