@@ -645,6 +645,10 @@ The protocol router (`src/protocols/router.ts`) is the entry point for all payme
 
 **Routing matrix:**
 
+> **Key distinction:** The `protocol` field (`x402`/`ap2`) is a **metadata tag**
+> classifying the payment's flavour — it does NOT determine execution.
+> The `gateway` field is the **routing key** that selects the execution backend.
+
 | Gateway Value | Payment Type | Description |
 |---|---|---|
 | `viem` | `web3` | Direct ETH/ERC-20 transfer via Viem |
@@ -654,8 +658,19 @@ The protocol router (`src/protocols/router.ts`) is the entry point for all payme
 | `mastercard` | `web2` | Mastercard Send API |
 | `googlepay` | `web2` | Google Pay token processing |
 | `applepay` | `web2` | Apple Pay token processing |
-| `x402` | `x402` | Remote x402 resource payment (discover → pay → access) |
-| `ap2` | `ap2` | Remote AP2 mandate submission (create → sign → pay) |
+| `x402` | `x402` | **Outbound x402 client** — discover → sign → pay → access an external x402-protected resource |
+| `ap2` | `ap2` | **Outbound AP2 client** — create mandate → sign → get credentials → submit to external AP2 service |
+
+**Auto-detection** when `gateway` is omitted:
+1. URL-shaped `recipient` + `protocol: "x402"` → gateway `x402`
+2. URL-shaped `recipient` + `protocol: "ap2"` → gateway `ap2`
+3. Crypto currency (`USDC`, `USDT`, `ETH`, `WETH`, `DAI`) or `protocol: "x402"` → gateway `viem`
+4. Otherwise → gateway `stripe`
+
+**Server-side endpoints** (`/api/v1/x402/*`, `/api/v1/ap2/*`) are **independent
+infrastructure** — they allow *external* agents to pay *this service* via x402
+paywalls or AP2 mandates. They are not related to the `protocol`/`gateway` fields
+in the payment intent JSON.
 
 ---
 
@@ -3081,14 +3096,26 @@ The agent is instructed to output this exact JSON when a payment is needed:
   "protocol": "x402 | ap2",
   "action": "pay",
   "amount": "<decimal string>",
-  "currency": "USDC | ETH | USD | EUR",
-  "recipient": "<address or merchant ID or URL>",
-  "network": "ethereum | base | polygon | web2",
-  "gateway": "viem | visa | mastercard | paypal | stripe | googlepay | applepay | x402 | ap2 | null",
-  "description": "<human-readable description>",
+  "currency": "USDC | USDT | ETH | WETH | DAI | USD | EUR",
+  "recipient": "<0x address | merchant ID | URL>",
+  "network": "ethereum | base | polygon | web2 | null",
+  "gateway": "viem | stripe | paypal | visa | mastercard | googlepay | applepay | x402 | ap2 | null",
+  "description": "<optional text>",
   "metadata": {}
 }
 ```
+
+| Field | Required | Description |
+|---|---|---|
+| `protocol` | ✅ | Metadata tag: `"x402"` (onchain flavour) or `"ap2"` (mandate flavour). Does **not** determine execution — `gateway` does. |
+| `action` | ✅ | Always `"pay"` |
+| `amount` | ✅ | Decimal string (e.g. `"10.50"`) |
+| `currency` | ✅ | Currency code |
+| `recipient` | ✅ | `0x...` address (web3), merchant ID (web2), or **URL** (x402/AP2 outbound client) |
+| `network` | ❌ | Blockchain network or `"web2"`. Defaults from config. |
+| `gateway` | ❌ | Execution backend. See routing matrix. Auto-detected when omitted. |
+| `description` | ❌ | Human-readable note |
+| `metadata` | ❌ | Gateway-specific extras (`paymentToken`, `payment_method_type`, etc.) |
 
 The protocol router extracts this JSON from the agent's message (even when surrounded by
 natural language) using regex-based extraction.
@@ -3109,6 +3136,21 @@ The `SKILL.md` instructs the agent:
 | User mentions "Apple Pay" | **AP2** → `applepay` gateway |
 | Crypto currency (USDC, ETH, DAI) | **web3** (Viem) |
 | Fiat currency (USD, EUR) | **web2** (Stripe default) |
+
+The `protocol` field is a **classification tag**, not a routing directive:
+
+| Signal | `protocol` | `gateway` (auto-detected if omitted) |
+|---|---|---|
+| User mentions USDC, ETH, stablecoin, onchain, x402 | `x402` | `viem` (or `x402` if recipient is a URL) |
+| Target is a URL returning HTTP 402 | `x402` | `x402` |
+| User mentions Stripe, PayPal, card payment, mandate | `ap2` | `stripe`, `paypal`, etc. |
+| User mentions Google Pay / GPay | `ap2` | `googlepay` |
+| User mentions Apple Pay | `ap2` | `applepay` |
+| User wants to submit a mandate to an external AP2 service | `ap2` | `ap2` |
+
+> **Rule of thumb:** Use `protocol: "x402"` for anything blockchain/crypto, and
+> `protocol: "ap2"` for anything fiat/mandate-based. The `gateway` field (or
+> auto-detection) handles the rest.
 
 ### Chat Confirmation Flow
 
